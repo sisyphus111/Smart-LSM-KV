@@ -487,3 +487,6 @@ std::string KVStore::fetchString(std::string file, int startOffset, uint32_t len
     return buffer;
 }
 
+std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::string query, int k){
+    
+}

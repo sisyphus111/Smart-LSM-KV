@@ -39,4 +39,6 @@ public:
     void addsstable(sstable ss, int level); // 将ss加入缓存
 
     std::string fetchString(std::string file, int startOffset, uint32_t len);
+
+    std::vector<std::pair<std::uint64_t, std::string>> search_knn(std::string query, int k);
 };
