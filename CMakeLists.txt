@@ -15,8 +15,13 @@ add_executable(persistence persistence.cc kvstore_api.h kvstore.h kvstore.cc
         bloom.cpp bloom.h MurmurHash3.h utils.h test.h
         sstablehead.cpp sstablehead.h)
 
+
 add_subdirectory(third_party/llama.cpp)
 
 add_subdirectory(embedding)
 
 add_subdirectory(test)
+
+target_link_libraries(correctness PUBLIC embedding)
+target_link_libraries(persistence PUBLIC embedding)
+
