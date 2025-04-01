@@ -93,6 +93,9 @@ void KVStore::put(uint64_t key, const std::string &val) {
         compaction();
         s->insert(key, val);
     }
+
+    cache[key] = val; // 加入缓存
+
 }
 
 /**
@@ -153,6 +156,11 @@ bool KVStore::del(uint64_t key) {
     if (!res.length())
         return false; // not exist
     put(key, DEL);    // put a del marker
+
+
+    cache.erase(key);//从缓存中删除
+
+
     return true;
 }
 
@@ -488,5 +496,33 @@ std::string KVStore::fetchString(std::string file, int startOffset, uint32_t len
 }
 
 std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::string query, int k){
-    
+    std::vector<uint64_t>keys;
+    std::vector<std::string>words;
+    for(auto &it : cache){
+        keys.push_back(it.first);
+        words.push_back(it.second);
+    }
+    size_t n_words = words.size();
+    std::string joined = join(words,"\n");
+    std::vector<std::vector<float>> vec = embedding(joined);
+    std::vector<std::vector<float>> query_vec = embedding(query);
+    std::vector<float> sim;
+    for(size_t i = 0; i < n_words; i++){
+        if(words[i] == DEL)sim.push_back(0);
+        else sim.push_back(common_embd_similarity_cos(vec[i].data(), query_vec[0].data(), query_vec[0].size()));
+    }
+    //选出相似度最高的n个值
+    std::vector<std::pair<float, uint64_t>> sim_keys;
+    for(size_t i = 0; i < n_words; i++){
+        sim_keys.push_back(std::make_pair(sim[i], keys[i]));
+    }
+    std::sort(sim_keys.begin(), sim_keys.end(), std::greater<std::pair<float, uint64_t>>());
+    std::vector<std::pair<std::uint64_t, std::string>> result;
+    for(int i = 0; i < k; i++){
+        if(i >= sim_keys.size())break;
+        uint64_t key = sim_keys[i].second;
+        std::string value = get(key);
+        result.push_back(std::make_pair(key, value));
+    }
+    return result;
 }
