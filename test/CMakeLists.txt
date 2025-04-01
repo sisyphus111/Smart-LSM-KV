@@ -14,3 +14,5 @@ target_compile_options(E2E_Test PRIVATE
 )
 
 target_link_libraries(Embedding_Test PUBLIC embedding)
+
+target_link_libraries(E2E_Test PUBLIC embedding)
