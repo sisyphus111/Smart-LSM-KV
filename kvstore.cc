@@ -95,7 +95,7 @@ void KVStore::put(uint64_t key, const std::string &val) {
     }
 
     cache[key] = val; // 加入缓存
-
+    cacheEmbedding.erase(key);// 删除原有的嵌入向量，待日后计算
 }
 
 /**
@@ -159,7 +159,7 @@ bool KVStore::del(uint64_t key) {
 
 
     cache.erase(key);//从缓存中删除
-
+    cacheEmbedding.erase(key);
 
     return true;
 }
@@ -182,6 +182,9 @@ void KVStore::reset() {
         sstableIndex[level].clear();
     }
     totalLevel = -1;
+
+    cacheEmbedding.clear();
+    cache.clear();
 }
 
 /**
@@ -496,33 +499,50 @@ std::string KVStore::fetchString(std::string file, int startOffset, uint32_t len
 }
 
 std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::string query, int k){
-    std::vector<uint64_t>keys;
-    std::vector<std::string>words;
-    for(auto &it : cache){
-        keys.push_back(it.first);
+    // 计算未被计算的嵌入向量
+    std::vector<std::pair<uint64_t,std::string>> kv2embd;
+    for (auto &it : cache) {
+        if (cacheEmbedding.find(it.first) == cacheEmbedding.end()) {
+            kv2embd.push_back(std::make_pair(it.first, it.second));
+        }
+    }
+    size_t n_kv2embd = kv2embd.size();
+    std::vector<std::string> words;
+    for (auto &it : kv2embd) {
         words.push_back(it.second);
     }
-    size_t n_words = words.size();
-    std::string joined = join(words,"\n");
+    words.push_back(query);
+    std::string joined = join(words, "\n");
     std::vector<std::vector<float>> vec = embedding(joined);
-    std::vector<std::vector<float>> query_vec = embedding(query);
-    std::vector<float> sim;
-    for(size_t i = 0; i < n_words; i++){
-        if(words[i] == DEL)sim.push_back(0);
-        else sim.push_back(common_embd_similarity_cos(vec[i].data(), query_vec[0].data(), query_vec[0].size()));
+
+    int n_dim = vec[0].size();//嵌入向量维数
+
+    //将除最后一行外的其他行存入cacheEmbedding
+    for (size_t i = 0; i < n_kv2embd; i++) {
+        cacheEmbedding[kv2embd[i].first] = vec[i];
     }
-    //选出相似度最高的n个值
-    std::vector<std::pair<float, uint64_t>> sim_keys;
-    for(size_t i = 0; i < n_words; i++){
-        sim_keys.push_back(std::make_pair(sim[i], keys[i]));
+
+    //维护小顶堆，取相似度最高的k个键值对
+    auto cmp = [](const std::pair<float, uint64_t>& a, const std::pair<float, uint64_t>& b) {
+        return a.first > b.first; // 小顶堆，比较float值
+    };
+
+    std::priority_queue<std::pair<float, uint64_t>, std::vector<std::pair<float, uint64_t>>, decltype(cmp)> minHeap(cmp);
+
+    for (auto &it:cacheEmbedding) {
+        float sim = common_embd_similarity_cos(it.second.data(), vec[n_kv2embd].data(), n_dim);
+        if (minHeap.size() < k || sim > minHeap.top().first) {
+            minHeap.push(std::make_pair(sim, it.first));
+            if (minHeap.size() > k) minHeap.pop();
+        }
     }
-    std::sort(sim_keys.begin(), sim_keys.end(), std::greater<std::pair<float, uint64_t>>());
-    std::vector<std::pair<std::uint64_t, std::string>> result;
-    for(int i = 0; i < k; i++){
-        if(i >= sim_keys.size())break;
-        uint64_t key = sim_keys[i].second;
-        std::string value = get(key);
-        result.push_back(std::make_pair(key, value));
+
+    //将小顶堆中的元素存入向量，每次存入开头部分，以达到降序排列
+    std::vector<std::pair<uint64_t, std::string>> result;
+    while (!minHeap.empty()){
+        result.insert(result.begin(), std::make_pair(minHeap.top().second, cache[minHeap.top().second]));
+        minHeap.pop();
     }
     return result;
+
 }

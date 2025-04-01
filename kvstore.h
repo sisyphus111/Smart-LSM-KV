@@ -23,6 +23,7 @@ private:
     int totalLevel = -1; // 层数
 
     std::unordered_map<uint64_t, std::string> cache; // 缓存所有键值对
+    std::unordered_map<uint64_t, std::vector<float>> cacheEmbedding; // 缓存所有嵌入向量
 
 
 public:
