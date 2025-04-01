@@ -18,6 +18,7 @@ private:
     std::vector<sstablehead> sstableIndex[15]; // the sshead for each level
 
     int totalLevel = -1; // 层数
+
 public:
     KVStore(const std::string &dir);
 
