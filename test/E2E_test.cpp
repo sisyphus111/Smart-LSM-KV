@@ -3,6 +3,8 @@
 #include <iostream>
 #include <string>
 
+#include <chrono>
+
 #include <cassert>
 #include <cstdint>
 #include <iostream>
@@ -97,6 +99,10 @@ public:
     CorrectnessTest(const std::string &dir, bool v = true) : Test(dir, v) {}
 
     void start_test(void *args = NULL) override {
+
+
+        auto start = std::chrono::high_resolution_clock::now(); // 记录开始时间
+
         std::cout << "KVStore Correctness Test" << std::endl;
 
         // store.reset();
@@ -114,6 +120,10 @@ public:
         // regular_test(LARGE_TEST_MAX);
         text_test(80);
 
+
+        auto end = std::chrono::high_resolution_clock::now(); // 记录结束时间
+        std::chrono::duration<double> duration = end - start; // 计算持续时间
+        std::cout << "Test duration: " << duration.count() << " seconds" << std::endl; // 输出执行时间
         //        store.reset();
         //        std::cout << "[Insert Test]" << std::endl;
         //        insert_test(1024 * 16);
