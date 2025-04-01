@@ -1,9 +1,21 @@
 cmake_minimum_required(VERSION 3.10)
-project(LSM_TREE)
+#project(LSM_TREE)
+
+project(LSM_TREE CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+
+option(GGML_CUDA "Enable CUDA in ggml" ON)
+set(GGML_CUDA_GRAPHS_DEFAULT ON)
+
+if(GGML_CUDA)
+    message(STATUS "Using CUDA in ggml")
+endif()
+
+
 
 add_executable(correctness correctness.cc kvstore_api.h kvstore.h
         kvstore.cc skiplist.cpp skiplist.h sstable.cpp sstable.h
