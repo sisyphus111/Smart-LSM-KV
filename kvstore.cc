@@ -71,6 +71,11 @@ KVStore::~KVStore()
  * No return values for simplicity.
  */
 void KVStore::put(uint64_t key, const std::string &val) {
+
+    if (val == DEL) cache.erase(key);
+    else cache[key] = val; // 加入缓存
+    cacheEmbedding.erase(key);// 删除原有的嵌入向量，待日后计算
+
     uint32_t nxtsize = s->getBytes();
     std::string res  = s->search(key);
     if (!res.length()) { // new add
@@ -94,8 +99,6 @@ void KVStore::put(uint64_t key, const std::string &val) {
         s->insert(key, val);
     }
 
-    cache[key] = val; // 加入缓存
-    cacheEmbedding.erase(key);// 删除原有的嵌入向量，待日后计算
 }
 
 /**
@@ -152,14 +155,15 @@ std::string KVStore::get(uint64_t key) //
  * Returns false iff the key is not found.
  */
 bool KVStore::del(uint64_t key) {
+
+    cache.erase(key);//从缓存中删除
+    cacheEmbedding.erase(key);
+
+
     std::string res = get(key);
     if (!res.length())
         return false; // not exist
     put(key, DEL);    // put a del marker
-
-
-    cache.erase(key);//从缓存中删除
-    cacheEmbedding.erase(key);
 
     return true;
 }
@@ -502,7 +506,8 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
     // 计算未被计算的嵌入向量
     std::vector<std::pair<uint64_t,std::string>> kv2embd;
     for (auto &it : cache) {
-        if (cacheEmbedding.find(it.first) == cacheEmbedding.end()) {
+        if (cacheEmbedding.find(it.first) == cacheEmbedding.end() && it.second != DEL) {
+            // 需要计算嵌入向量的元素
             kv2embd.push_back(std::make_pair(it.first, it.second));
         }
     }
@@ -530,6 +535,7 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
     std::priority_queue<std::pair<float, uint64_t>, std::vector<std::pair<float, uint64_t>>, decltype(cmp)> minHeap(cmp);
 
     for (auto &it:cacheEmbedding) {
+        if (cache[it.first] == DEL)continue;//已删除的元素
         float sim = common_embd_similarity_cos(it.second.data(), vec[n_kv2embd].data(), n_dim);
         if (minHeap.size() < k || sim > minHeap.top().first) {
             minHeap.push(std::make_pair(sim, it.first));
