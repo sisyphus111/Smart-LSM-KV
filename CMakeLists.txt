@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
-#project(LSM_TREE)
 
+#project(LSM_TREE)
 project(LSM_TREE CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 20)

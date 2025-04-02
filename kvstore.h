@@ -4,9 +4,12 @@
 #include "skiplist.h"
 #include "sstable.h"
 #include "sstablehead.h"
+#include "embedding.h"
+
 
 #include <map>
 #include <set>
+#include <unordered_map>
 
 class KVStore : public KVStoreAPI {
     // You can add your implementation here
@@ -18,6 +21,10 @@ private:
     std::vector<sstablehead> sstableIndex[15]; // the sshead for each level
 
     int totalLevel = -1; // 层数
+
+    std::unordered_map<uint64_t, std::string> cache; // 缓存所有键值对
+    std::unordered_map<uint64_t, std::vector<float>> cacheEmbedding; // 缓存所有嵌入向量
+
 
 public:
     KVStore(const std::string &dir);

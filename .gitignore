@@ -1,5 +1,7 @@
 # Ignore build directories
 /build/
+/cmake-build-debug-wsl/
+/cmake-build-debug-wsl-cuda/
 /data/
 /CMakeFiles/
 /CMakeCache.txt
