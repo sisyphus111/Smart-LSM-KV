@@ -2,7 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
-
+#include <chrono>
 #include <cassert>
 #include <cstdint>
 #include <iostream>
@@ -47,6 +47,9 @@ private:
     const uint64_t LARGE_TEST_MAX  = 1024 * 64;
 
 	void text_test(uint64_t max) {
+
+	    auto start = std::chrono::high_resolution_clock::now(); // 开始计时
+
 		uint64_t i;
 		auto trimmed_text = read_file("./data/trimmed_text.txt");
 		max				  = std::min(max, (uint64_t)trimmed_text.size());
@@ -78,6 +81,14 @@ private:
 				idx++;
 			}
 		}
+
+
+
+	    auto end = std::chrono::high_resolution_clock::now(); // 结束计时
+	    std::chrono::duration<double> duration = end - start;
+	    std::cout << "Text test duration: " << duration.count() << " seconds" << std::endl;
+
+
 		auto phase_with_tolerance = [this](double tolerance = 0.03) {
 			// Report
 			std::cout << "  Phase " << (nr_phases + 1) << ": ";
@@ -112,7 +123,7 @@ public:
     void start_test(void *args = NULL) override {
         std::cout << "===========================" << std::endl;
         std::cout << "KVStore Correctness Test" << std::endl;
-        
+
         store.reset();
         std::cout << "[Text Test]" << std::endl;
         text_test(120);
