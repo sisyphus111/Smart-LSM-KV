@@ -72,8 +72,8 @@ KVStore::~KVStore()
  */
 void KVStore::put(uint64_t key, const std::string &val) {
 
-    if (val == DEL) cache.erase(key);
-    else cache[key] = val; // 加入缓存
+    if (val == DEL) cacheKey.erase(key);
+    else cacheKey.insert(key); // 加入缓存
     cacheEmbedding.erase(key);// 删除原有的嵌入向量，待日后计算
 
     uint32_t nxtsize = s->getBytes();
@@ -156,7 +156,7 @@ std::string KVStore::get(uint64_t key) //
  */
 bool KVStore::del(uint64_t key) {
 
-    cache.erase(key);//从缓存中删除
+    cacheKey.erase(key);//从缓存中删除
     cacheEmbedding.erase(key);
 
 
@@ -188,7 +188,7 @@ void KVStore::reset() {
     totalLevel = -1;
 
     cacheEmbedding.clear();
-    cache.clear();
+    cacheKey.clear();
 }
 
 /**
@@ -540,10 +540,10 @@ std::string KVStore::fetchString(std::string file, int startOffset, uint32_t len
 std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::string query, int k){
     // 计算未被计算的嵌入向量
     std::vector<std::pair<uint64_t,std::string>> kv2embd;
-    for (auto &it : cache) {
-        if (cacheEmbedding.find(it.first) == cacheEmbedding.end() && it.second != DEL) {
+    for (auto &it : cacheKey) {
+        if (cacheEmbedding.find(it) == cacheEmbedding.end()) {
             // 需要计算嵌入向量的元素
-            kv2embd.push_back(std::make_pair(it.first, it.second));
+            kv2embd.push_back(std::make_pair(it, get(it)));
         }
     }
     size_t n_kv2embd = kv2embd.size();
@@ -570,7 +570,7 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
     std::priority_queue<std::pair<float, uint64_t>, std::vector<std::pair<float, uint64_t>>, decltype(cmp)> minHeap(cmp);
 
     for (auto &it:cacheEmbedding) {
-        if (cache[it.first] == DEL)continue;//已删除的元素
+        if (cacheKey.find(it.first) == cacheKey.end())continue;//不存在该元素
         float sim = common_embd_similarity_cos(it.second.data(), vec[n_kv2embd].data(), n_dim);
         if (minHeap.size() < k || sim > minHeap.top().first) {
             minHeap.push(std::make_pair(sim, it.first));
@@ -581,7 +581,7 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
     //将小顶堆中的元素存入向量，每次存入开头部分，以达到降序排列
     std::vector<std::pair<uint64_t, std::string>> result;
     while (!minHeap.empty()){
-        result.insert(result.begin(), std::make_pair(minHeap.top().second, cache[minHeap.top().second]));
+        result.insert(result.begin(), std::make_pair(minHeap.top().second, get(minHeap.top().second)));
         minHeap.pop();
     }
     return result;
