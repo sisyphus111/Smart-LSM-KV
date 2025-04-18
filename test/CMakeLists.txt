@@ -1,4 +1,6 @@
-add_executable(Embedding_Test Embedding_Test.cpp)
+add_executable(Embedding_Test Embedding_Test.cpp
+        ../HNSW.h
+        ../HNSW.cpp)
 add_executable(E2E_Test
     E2E_test.cpp
     ../kvstore.cc
@@ -7,6 +9,8 @@ add_executable(E2E_Test
     ../bloom.cpp
     ../sstablehead.cpp
     ../utils.h
+    ../HNSW.h
+    ../HNSW.cpp
 )
 # 为 E2E_Test 设置调试编译选项
 target_compile_options(E2E_Test PRIVATE
