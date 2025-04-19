@@ -5,6 +5,7 @@
 #include "utils.h"
 
 #include <algorithm>
+#include <chrono>  // 添加chrono库用于精确计时
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
@@ -540,6 +541,9 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
         cacheEmbedding[kv2embd[i].first] = vec[i];
     }
 
+    // 开始计时 - 只计时核心搜索部分
+    auto start_time = std::chrono::high_resolution_clock::now();
+
     //维护小顶堆，取相似度最高的k个键值对
     auto cmp = [](const std::pair<float, uint64_t>& a, const std::pair<float, uint64_t>& b) {
         return a.first > b.first; // 小顶堆，比较float值
@@ -555,6 +559,11 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
             if (minHeap.size() > k) minHeap.pop();
         }
     }
+
+    // 结束计时
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+    std::cout << "search_knn 核心搜索部分耗时: " << duration << " 微秒" << std::endl;
 
     //将小顶堆中的元素存入向量，每次存入开头部分，以达到降序排列
     std::vector<std::pair<uint64_t, std::string>> result;
@@ -589,10 +598,20 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn_hnsw(std:
         hnswIndex->insert(vec[i], calcEmbd[i]);
     }
 
+    // 开始计时 - 只计时核心搜索部分
+    auto start_time = std::chrono::high_resolution_clock::now();
+    
+    // 核心搜索部分
+    std::vector<uint64_t> result_key = hnswIndex->search_knn_hnsw(vec[vec.size() - 1], k);
+    
+    // 结束计时
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+    std::cout << "search_knn_hnsw 核心搜索部分耗时: " << duration << " 微秒" << std::endl;
+
     // 清空cacheKey缓存
     cacheKey.clear();
 
-    std::vector<uint64_t> result_key = hnswIndex->search_knn_hnsw(vec[vec.size() - 1], k);
     std::vector<std::pair<std::uint64_t, std::string>> result;
     for (auto &it: result_key) {
         result.push_back(std::make_pair(it, get(it)));

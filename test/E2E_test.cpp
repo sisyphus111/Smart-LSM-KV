@@ -48,8 +48,6 @@ private:
 
 	void text_test(uint64_t max) {
 
-	    auto start = std::chrono::high_resolution_clock::now(); // 开始计时
-
 		uint64_t i;
 		auto trimmed_text = read_file("./data/trimmed_text.txt");
 		max				  = std::min(max, (uint64_t)trimmed_text.size());
@@ -68,9 +66,12 @@ private:
 		std::vector<std::string> ans;
         ans = read_file("./data/test_text_ans.txt");
         phase();
+        
+		// 测试search_knn函数
+		std::cout << "Testing search_knn function:" << std::endl;
 		int idx = 0, k = 3;
 		for (i = 0; i < max; ++i) {
-			auto res = store.search_knn_hnsw(test_text[i], k);
+			auto res = store.search_knn(test_text[i], k);
 			for (auto j : res) {
                 if(store.get(j.first) != j.second) {
                     std::cerr << "TEST Error @" << __FILE__ << ":" << __LINE__;
@@ -81,12 +82,6 @@ private:
 				idx++;
 			}
 		}
-
-
-
-	    auto end = std::chrono::high_resolution_clock::now(); // 结束计时
-	    std::chrono::duration<double> duration = end - start;
-	    std::cout << "Text test duration: " << duration.count() << " seconds" << std::endl;
 
 
 		auto phase_with_tolerance = [this](double tolerance = 0.03) {
@@ -114,6 +109,23 @@ private:
 			nr_tests		= 0;
 			nr_passed_tests = 0;
 		};
+		phase_with_tolerance(0.15);
+		
+		// 测试search_knn_hnsw函数
+		std::cout << "Testing search_knn_hnsw function:" << std::endl;
+		idx = 0;
+		for (i = 0; i < max; ++i) {
+			auto res = store.search_knn_hnsw(test_text[i], k);
+			for (auto j : res) {
+                if(store.get(j.first) != j.second) {
+                    std::cerr << "TEST Error @" << __FILE__ << ":" << __LINE__;
+                    std::cerr << ", expected " << ans[idx];
+                    std::cerr << ", got " << j.second << std::endl;
+                }
+				EXPECT(ans[idx], j.second);
+				idx++;
+			}
+		}
 		phase_with_tolerance(0.15);
 	}
 
