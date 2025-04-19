@@ -5,7 +5,7 @@
 #include "sstable.h"
 #include "sstablehead.h"
 #include "embedding.h"
-
+#include "HNSW.h"
 
 #include <map>
 #include <set>
@@ -24,6 +24,9 @@ private:
 
     std::set<uint64_t> cacheKey; // 缓存所有键
     std::unordered_map<uint64_t, std::vector<float>> cacheEmbedding; // 缓存所有嵌入向量
+
+    HNSWIndex* hnswIndex; // HNSW索引，存储所有键值对
+    std::set<uint64_t> cacheKey_HNSW;// key的缓冲区，在search_knn_show时批量计算嵌入向量
 
 
 public:
@@ -49,4 +52,5 @@ public:
     std::string fetchString(std::string file, int startOffset, uint32_t len);
 
     std::vector<std::pair<std::uint64_t, std::string>> search_knn(std::string query, int k);
+    std::vector<std::pair<std::uint64_t, std::string>> search_knn_hnsw(std::string query, int k);
 };

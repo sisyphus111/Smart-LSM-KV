@@ -72,8 +72,14 @@ KVStore::~KVStore()
  */
 void KVStore::put(uint64_t key, const std::string &val) {
 
-    if (val == DEL) cacheKey.erase(key);
-    else cacheKey.insert(key); // 加入缓存
+    if (val == DEL) {
+        cacheKey.erase(key);
+        cacheKey_HNSW.erase(key);
+    }
+    else {
+        cacheKey.insert(key); // 加入缓存
+        cacheKey_HNSW.insert(key);
+    }
     cacheEmbedding.erase(key);// 删除原有的嵌入向量，待日后计算
 
     uint32_t nxtsize = s->getBytes();
@@ -157,6 +163,7 @@ std::string KVStore::get(uint64_t key) //
 bool KVStore::del(uint64_t key) {
 
     cacheKey.erase(key);//从缓存中删除
+    cacheKey_HNSW.erase(key);
     cacheEmbedding.erase(key);
 
 
@@ -187,8 +194,11 @@ void KVStore::reset() {
     }
     totalLevel = -1;
 
+    if (hnswIndex)delete hnswIndex;
+    hnswIndex = new HNSWIndex();
     cacheEmbedding.clear();
     cacheKey.clear();
+    cacheKey_HNSW.clear();
 }
 
 /**
@@ -502,38 +512,6 @@ std::string KVStore::fetchString(std::string file, int startOffset, uint32_t len
     return buffer;
 }
 
-//蛮力搜索
-// std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::string query, int k) {
-//     auto query_vector = embedding(query)[0];
-//     int n_dim = query_vector.size();// 嵌入向量维数
-//     // 计算所有嵌入向量
-//     std::vector<std::pair<std::uint64_t, float>> cacheSim;
-//     std::vector<std::string> words;
-//     std::vector<std::pair<std::uint64_t, std::string>> kv;
-//     for (auto &it: cache) {
-//         if (it.second != DEL) {
-//             kv.push_back(it);
-//             words.push_back(it.second);
-//         }
-//     }
-//     auto vec = embedding(join(words, "\n"));
-//     for (size_t i = 0; i < kv.size(); i++) {
-//         cacheEmbedding[kv[i].first] = vec[i];
-//         float sim = common_embd_similarity_cos(cacheEmbedding[kv[i].first].data(), query_vector.data(), n_dim);
-//         cacheSim.push_back(std::make_pair(kv[i].first, sim));
-//     }
-//     // 使用sort，按照sim降序排列cacheSim
-//     std::sort(cacheSim.begin(), cacheSim.end(), [](const std::pair<std::uint64_t, float> &a, const std::pair<std::uint64_t, float> &b) {
-//         return a.second > b.second;
-//     });
-//     // 取前k个
-//     std::vector<std::pair<std::uint64_t, std::string>> result;
-//     for (int i = 0; i < k && i < cacheSim.size(); i++) {
-//         result.push_back(std::make_pair(cacheSim[i].first, cache[cacheSim[i].first]));
-//     }
-//     return result;
-// }
-
 
 
 // 使用堆排序
@@ -586,4 +564,38 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
     }
     return result;
 
+}
+
+std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn_hnsw(std::string query, int k){
+    // 计算未被计算的嵌入向量
+
+    std::vector<uint64_t> calcEmbd;
+    for (auto &it: cacheKey) {
+        calcEmbd.push_back(it);
+    }
+
+    std::vector<std::string> words;
+    for (auto &it : calcEmbd) {
+        words.push_back(get(it));
+    }
+    words.push_back(query);
+
+    std::string joined = join(words, "\n");
+    std::vector<std::vector<float>> vec = embedding(joined);
+
+
+    // 将算得的嵌入向量存入HNSWIndex
+    for (size_t i = 0; i < calcEmbd.size(); i++) {
+        hnswIndex->insert(vec[i], calcEmbd[i]);
+    }
+
+    // 清空cacheKey缓存
+    cacheKey.clear();
+
+    std::vector<uint64_t> result_key = hnswIndex->search_knn_hnsw(vec[vec.size() - 1], k);
+    std::vector<std::pair<std::uint64_t, std::string>> result;
+    for (auto &it: result_key) {
+        result.push_back(std::make_pair(it, get(it)));
+    }
+    return result;
 }
