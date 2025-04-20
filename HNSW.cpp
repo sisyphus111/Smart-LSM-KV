@@ -56,23 +56,26 @@ int HNSWIndex::getRandomLevel() {
 
 // 接受一个嵌入向量和一个key，将其插入到HNSW图中
 void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
+    if (!entry) {
+        //std::cout << "HNSWIndex: 首个节点插入，设为入口点" << std::endl;
+        entry = new Node(m_L, key, embedding);
+        return;
+    }
+
+
     //std::cout << "HNSWIndex: 开始插入新节点，key=" << key << std::endl;
     int newLevel = getRandomLevel();
 
     //std::cout << "HNSWIndex: 创建新节点，层级=" << newLevel << std::endl;
     Node *newNode = new Node(newLevel, key, embedding);
-    if (!entry) {
-        //std::cout << "HNSWIndex: 首个节点插入，设为入口点" << std::endl;
-        entry = newNode;
-        return;
-    }
+
 
     // 从入口节点开始寻找
     Node *cur = entry;
     //std::cout << "HNSWIndex: 从第 " << std::max(entry->level, newLevel) - 1 << " 层开始搜索最近节点" << std::endl;
-    for (int i = std::max(entry->level, newLevel) - 1; i >= 0; i--) {
+    for (int i = entry->level - 1; i >= 0; i--) {
         // 自最顶层向下处理
-        if (i > newLevel - 1) {
+        if (i >= newLevel) {
             //std::cout << "HNSWIndex: 第 " << i << " 层 (高于新节点层级)，贪心搜索" << std::endl;
             // 在新节点的层数之上，贪心地更新cur，靠近新节点
             while (!cur->neighbors[i].empty()) {
@@ -95,25 +98,28 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
         else {
             //std::cout << "HNSWIndex: 第 " << i << " 层 (新节点层级范围内)，BFS搜索近邻" << std::endl;
             // 在新节点的层数之下，利用类似BFS的方法在每层中寻找与q最近邻的efConstruction个点，再从中选出M个最近邻进行连接
-            std::queue<Node*> queue;
-            std::unordered_map<Node*, bool> visited;
 
+
+            std::priority_queue<std::pair<float, Node*>> queue;
+            std::unordered_map<Node*, bool> visited;
             // 存放efConstruction个点的大顶堆
             std::priority_queue<std::pair<float, Node*>> pq;
 
+            float sim = common_embd_similarity_cos(cur->embedding.data(), embedding.data(), cur->embedding.size());
+            queue.push(std::make_pair(sim, cur));
 
-            queue.push(cur);
             while (!queue.empty() && pq.size() < efConstruction) {
-                Node *current = queue.front();
+                Node *current = queue.top().second;
                 queue.pop();
                 if (visited[current]) continue;
                 visited[current] = true;
                 // 计算当前节点与新节点的相似度
-                float sim = common_embd_similarity_cos(current->embedding.data(), embedding.data(), current->embedding.size());
-                pq.push(std::make_pair(sim, current));
+                pq.push(std::make_pair(common_embd_similarity_cos(current->embedding.data(), embedding.data(), current->embedding.size()), current));
                 // 将其邻居入队
                 for (auto it: current->neighbors[i]) {
-                    if (!visited[it])queue.push(it);
+                    if (!visited[it]) {
+                        queue.push(std::make_pair(common_embd_similarity_cos(it->embedding.data(), embedding.data(), it->embedding.size()), it));
+                    }
                 }
             }
 
@@ -140,9 +146,9 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
                     float worst_sim = 1;
                     Node *worst_neighbor = nullptr;
                     for (auto it2: it->neighbors[i]) {
-                        float sim = common_embd_similarity_cos(it2->embedding.data(), it->embedding.data(), it2->embedding.size());
-                        if (sim < worst_sim) {
-                            worst_sim = sim;
+                        float cursim = common_embd_similarity_cos(it2->embedding.data(), it->embedding.data(), it2->embedding.size());
+                        if (cursim < worst_sim) {
+                            worst_sim = cursim;
                             worst_neighbor = it2;
                         }
                     }
@@ -165,12 +171,6 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
         }
     }
 
-    // 若新节点的层数大于当前层数，则更新当前层数
-    if (newLevel > entry->level) {
-        //std::cout << "HNSWIndex: 新节点层级(" << newLevel << ")大于入口节点层级(" << entry->level << ")，更新入口点" << std::endl;
-        entry = newNode;
-    }
-    
     //std::cout << "HNSWIndex: 节点插入完成，key=" << key << std::endl;
 }
 

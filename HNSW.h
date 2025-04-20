@@ -4,6 +4,8 @@
 #include <random>
 #include "embedding.h"
 
+#define max_L 6
+
 // 注：这个HNSWIndex似乎不支持删除
 // 另外，插入键相同的键值对的规定行为是覆盖，但这里不支持
 class HNSWIndex {
@@ -18,12 +20,12 @@ private:
     std::mt19937 gen;
 
 
-    int M = 6; // 插入过程中，被插入节点需要与图中其他节点建立的连接数
+    int M = 5; // 插入过程中，被插入节点需要与图中其他节点建立的连接数
     int M_max = 10; // 连接数的上限，若超过则需要删除部分连接
-    int efConstruction = 50; // 搜索过程中候选节点集合的数量
-    int m_L = 6; // 节点的最高层数
+    int efConstruction = 60; // 搜索过程中候选节点集合的数量
+    int m_L = max_L; // 节点的最高层数
 
-    double grow = 0.5; // 节点的增长率
+    double grow = 0.3; // 节点的增长率
 
 
     struct Node {
@@ -34,7 +36,7 @@ private:
         uint64_t key;
         int level; // 节点的层数
 
-        int m_L = 6; // 节点的最高层数
+        int m_L = max_L; // 节点的最高层数
 
         Node(int level, uint64_t key, const std::vector<float>& embedding): level(level), key(key), embedding(embedding) {
             neighbors.resize(m_L);
