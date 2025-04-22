@@ -215,10 +215,10 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
     std::priority_queue<std::pair<float, Node*>> pq;// 大顶堆
 
     std::unordered_map<Node*, bool> visited;
-    std::queue<Node*> queue;
-    queue.push(cur);
+    std::priority_queue<std::pair<float, Node*>> queue;
+    queue.push(std::make_pair(common_embd_similarity_cos(cur->embedding.data(), query.data(), query.size()), cur));
     while (!queue.empty() && pq.size() < efConstruction) {
-        Node *current = queue.front();
+        Node *current = queue.top().second;
         queue.pop();
         if (visited[current]) continue;
         visited[current] = true;
@@ -227,7 +227,7 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
         pq.push(std::make_pair(sim, current));
         // 将其邻居入队
         for (auto it: current->neighbors[0]) {
-            if (!visited[it])queue.push(it);
+            if (!visited[it])queue.push(std::make_pair(common_embd_similarity_cos(it->embedding.data(), query.data(), query.size()),it));
         }
     }
     
