@@ -43,6 +43,52 @@ HNSWIndex::~HNSWIndex() {
     //std::cout << "HNSWIndex: 共删除了 " << deletedNodes << " 个节点" << std::endl;
 }
 
+std::vector<Node*> HNSWIndex::simulated_annealing_select(
+    const std::vector<Node*>& candidates,
+    Node* center,
+    int current_level,
+    float temperature
+) {
+    std::vector<Node*> selected;
+    std::vector<std::pair<float, Node*>> scored_candidates;
+
+    // 1. 计算所有候选节点与中心节点的原始相似度
+    for (Node* node : candidates) {
+        float sim = common_embd_similarity_cos(center->embedding.data(),
+                               node->embedding.data(),
+                               center->embedding.size());
+        scored_candidates.emplace_back(sim, node);
+    }
+
+    // 2. 按相似度降序排序
+    std::sort(scored_candidates.begin(), scored_candidates.end(),
+        [](const auto& a, const auto& b) { return a.first > b.first; });
+
+    // 3. 模拟退火选择
+    float avg_sim = std::accumulate(
+        scored_candidates.begin(), scored_candidates.end(), 0.0f,
+        [](float sum, const auto& p) { return sum + p.first; }
+    ) / scored_candidates.size();
+
+    std::uniform_real_distribution<float> dist(0, 1);
+    for (const auto& [sim, node] : scored_candidates) {
+        // 计算能量差（这里用相似度差值）
+        float delta = sim - avg_sim;
+
+        // 退火概率公式：p = exp(ΔE / T)
+        float accept_prob = std::exp(delta / temperature);
+
+        // 接受条件：1) 概率达标 或 2) 强制保留Top 2节点
+        if (accept_prob > dist(gen) || selected.size() < 2) {
+            selected.push_back(node);
+            if (selected.size() >= M) break;
+        }
+    }
+
+    return selected;
+}
+
+
 int HNSWIndex::getRandomLevel() {
     //std::cout << "HNSWIndex: 生成随机层级" << std::endl;
     std::geometric_distribution<> geometric(grow);
@@ -98,8 +144,6 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
         else {
             //std::cout << "HNSWIndex: 第 " << i << " 层 (新节点层级范围内)，BFS搜索近邻" << std::endl;
             // 在新节点的层数之下，利用类似BFS的方法在每层中寻找与q最近邻的efConstruction个点，再从中选出M个最近邻进行连接
-
-
             std::priority_queue<std::pair<float, Node*>> queue;
             std::unordered_map<Node*, bool> visited;
             // 存放efConstruction个点的大顶堆
