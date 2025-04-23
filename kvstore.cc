@@ -518,6 +518,8 @@ std::string KVStore::fetchString(std::string file, int startOffset, uint32_t len
 
 // 使用堆排序
 std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::string query, int k){
+
+
     // 计算未被计算的嵌入向量
     std::vector<std::pair<uint64_t,std::string>> kv2embd;
     for (auto &it : cacheKey) {
@@ -541,6 +543,7 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
     for (size_t i = 0; i < n_kv2embd; i++) {
         cacheEmbedding[kv2embd[i].first] = vec[i];
     }
+
 
     // 开始计时 - 只计时核心搜索部分
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -578,29 +581,33 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
 
 
 std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn_vector(const std::vector<float> &query, int k) {
+
         // 计算未被计算的嵌入向量
-    std::vector<std::pair<uint64_t,std::string>> kv2embd;
-    for (auto &it : cacheKey) {
-        if (cacheEmbedding.find(it) == cacheEmbedding.end()) {
-            // 需要计算嵌入向量的元素
-            kv2embd.push_back(std::make_pair(it, get(it)));
+        std::vector<std::pair<uint64_t,std::string>> kv2embd;
+        for (auto &it : cacheKey) {
+            if (cacheEmbedding.find(it) == cacheEmbedding.end()) {
+                // 需要计算嵌入向量的元素
+                kv2embd.push_back(std::make_pair(it, get(it)));
+            }
+        }
+        size_t n_kv2embd = kv2embd.size();
+
+    if (n_kv2embd != 0) {
+        std::vector<std::string> words;
+        for (auto &it : kv2embd) {
+            words.push_back(it.second);
+        }
+
+        std::string joined = join(words, "\n");
+        std::vector<std::vector<float>> vec = embedding(joined);
+
+        //将除最后一行外的其他行存入cacheEmbedding
+        for (size_t i = 0; i < n_kv2embd; i++) {
+            cacheEmbedding[kv2embd[i].first] = vec[i];
         }
     }
-    size_t n_kv2embd = kv2embd.size();
-    std::vector<std::string> words;
-    for (auto &it : kv2embd) {
-        words.push_back(it.second);
-    }
 
-    std::string joined = join(words, "\n");
-    std::vector<std::vector<float>> vec = embedding(joined);
 
-    int n_dim = vec[0].size();//嵌入向量维数
-
-    //将除最后一行外的其他行存入cacheEmbedding
-    for (size_t i = 0; i < n_kv2embd; i++) {
-        cacheEmbedding[kv2embd[i].first] = vec[i];
-    }
 
     // 开始计时 - 只计时核心搜索部分
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -614,7 +621,7 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn_vector(co
 
     for (auto &it:cacheEmbedding) {
         if (cacheKey.find(it.first) == cacheKey.end())continue;//不存在该元素
-        float sim = common_embd_similarity_cos(it.second.data(), query.data(), n_dim);
+        float sim = common_embd_similarity_cos(it.second.data(), query.data(), query.size());
         if (minHeap.size() < k || sim > minHeap.top().first) {
             minHeap.push(std::make_pair(sim, it.first));
             if (minHeap.size() > k) minHeap.pop();
@@ -636,27 +643,31 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn_vector(co
 }
 
 std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn_hnsw(std::string query, int k){
-    // 计算未被计算的嵌入向量
 
-    std::vector<uint64_t> calcEmbd;
-    for (auto &it: cacheKey) {
-        calcEmbd.push_back(it);
-    }
+        // 计算未被计算的嵌入向量
+        std::vector<uint64_t> calcEmbd;
+        for (auto &it: cacheKey_HNSW) {
+            calcEmbd.push_back(it);
+        }
 
-    std::vector<std::string> words;
-    for (auto &it : calcEmbd) {
-        words.push_back(get(it));
-    }
-    words.push_back(query);
+        std::vector<std::string> words;
+        for (auto &it : calcEmbd) {
+            words.push_back(get(it));
+        }
+        words.push_back(query);
 
-    std::string joined = join(words, "\n");
-    std::vector<std::vector<float>> vec = embedding(joined);
+        std::string joined = join(words, "\n");
+        std::vector<std::vector<float>> vec = embedding(joined);
 
 
-    // 将算得的嵌入向量存入HNSWIndex
-    for (size_t i = 0; i < calcEmbd.size(); i++) {
-        hnswIndex->insert(vec[i], calcEmbd[i]);
-    }
+        // 将算得的嵌入向量存入HNSWIndex
+        for (size_t i = 0; i < calcEmbd.size(); i++) {
+            hnswIndex->insert(vec[i], calcEmbd[i]);
+        }
+
+    //清空缓存
+    cacheKey_HNSW.clear();
+
 
     // 开始计时 - 只计时核心搜索部分
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -669,8 +680,7 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn_hnsw(std:
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
     std::cout << "search_knn_hnsw 核心搜索部分耗时: " << duration << " 微秒" << std::endl;
 
-    // 清空cacheKey缓存
-    cacheKey.clear();
+
 
     std::vector<std::pair<std::uint64_t, std::string>> result;
     for (auto &it: result_key) {
@@ -679,8 +689,9 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn_hnsw(std:
     return result;
 }
 
+
 std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn_hnsw_vector(const std::vector<float> &query, int k){
-    if (!cacheKey.empty()) {
+    if (!cacheKey_HNSW.empty()) {
         // 计算未被计算的嵌入向量
 
         std::vector<uint64_t> calcEmbd;
@@ -702,8 +713,9 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn_hnsw_vect
         for (size_t i = 0; i < calcEmbd.size(); i++) {
             hnswIndex->insert(vec[i], calcEmbd[i]);
         }
-        cacheKey.clear();
+        cacheKey_HNSW.clear();
     }
+
     // 开始计时 - 只计时核心搜索部分
     auto start_time = std::chrono::high_resolution_clock::now();
 
