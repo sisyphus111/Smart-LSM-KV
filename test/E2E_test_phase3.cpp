@@ -70,15 +70,15 @@ private:
         phase();
 
 		// 测试search_knn函数
-		// std::cout << "Testing search_knn function:" << std::endl;
+		std::cout << "Testing search_knn function:" << std::endl;
 		int idx = 0, k = 3; // k原为3
-		// for (i = 0; i < max; ++i) {
-		// 	auto res = store.search_knn_vector(input_vectors[i], k);
-		// 	for (auto j : res) {
-		// 		EXPECT(ans[idx], j.second);
-		// 		idx++;
-		// 	}
-		// }
+		for (i = 0; i < max; ++i) {
+			auto res = store.search_knn_vector(input_vectors[i], k);
+			for (auto j : res) {
+				EXPECT(ans[idx], j.second);
+				idx++;
+			}
+		}
 
 
 		auto phase_with_tolerance = [this](double tolerance = 0.03) {
@@ -106,7 +106,7 @@ private:
 			nr_tests		= 0;
 			nr_passed_tests = 0;
 		};
-		// phase_with_tolerance(0.15);
+		phase_with_tolerance(0.15);
 
 		// 测试search_knn_hnsw函数
 		std::cout << "Testing search_knn_hnsw function:" << std::endl;
