@@ -53,4 +53,8 @@ public:
 
     std::vector<std::pair<std::uint64_t, std::string>> search_knn(std::string query, int k);
     std::vector<std::pair<std::uint64_t, std::string>> search_knn_hnsw(std::string query, int k);
+
+    // 接受向量的search_knn和search_knn_hnsw函数，phase3测试用
+    std::vector<std::pair<std::uint64_t, std::string>> search_knn_vector(const std::vector<float> &query, int k);
+    std::vector<std::pair<std::uint64_t, std::string>> search_knn_hnsw_vector(const std::vector<float> &query, int k);
 };

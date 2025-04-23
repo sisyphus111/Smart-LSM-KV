@@ -43,24 +43,13 @@ HNSWIndex::~HNSWIndex() {
     //std::cout << "HNSWIndex: 共删除了 " << deletedNodes << " 个节点" << std::endl;
 }
 
-std::vector<Node*> HNSWIndex::simulated_annealing_select(
-    const std::vector<Node*>& candidates,
+void HNSWIndex::simulated_annealing_select(
+    std::vector<std::pair<float, Node*>>& scored_candidates,
     Node* center,
     int current_level,
     float temperature
 ) {
-    std::vector<Node*> selected;
-    std::vector<std::pair<float, Node*>> scored_candidates;
-
-    // 1. 计算所有候选节点与中心节点的原始相似度
-    for (Node* node : candidates) {
-        float sim = common_embd_similarity_cos(center->embedding.data(),
-                               node->embedding.data(),
-                               center->embedding.size());
-        scored_candidates.emplace_back(sim, node);
-    }
-
-    // 2. 按相似度降序排序
+    // 按相似度降序排序
     std::sort(scored_candidates.begin(), scored_candidates.end(),
         [](const auto& a, const auto& b) { return a.first > b.first; });
 
@@ -79,13 +68,13 @@ std::vector<Node*> HNSWIndex::simulated_annealing_select(
         float accept_prob = std::exp(delta / temperature);
 
         // 接受条件：1) 概率达标 或 2) 强制保留Top 2节点
-        if (accept_prob > dist(gen) || selected.size() < 2) {
-            selected.push_back(node);
-            if (selected.size() >= M) break;
+        if (accept_prob > dist(gen) || center->neighbors[current_level].size() < 2) {
+            center->neighbors[current_level].push_back(node);
+            if (center->neighbors[current_level].size() >= M) break;
         }
     }
 
-    return selected;
+    return;
 }
 
 
@@ -147,10 +136,10 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
             std::priority_queue<std::pair<float, Node*>> queue;
             std::unordered_map<Node*, bool> visited;
             // 存放efConstruction个点的大顶堆
-            std::priority_queue<std::pair<float, Node*>> pq;
+            std::vector<std::pair<float, Node*>> pq;
 
-            float sim = common_embd_similarity_cos(cur->embedding.data(), embedding.data(), cur->embedding.size());
-            queue.push(std::make_pair(sim, cur));
+
+            queue.push(std::make_pair(common_embd_similarity_cos(embedding.data(), cur->embedding.data(), embedding.size()), cur));
 
             while (!queue.empty() && pq.size() < efConstruction) {
                 Node *current = queue.top().second;
@@ -158,11 +147,11 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
                 if (visited[current]) continue;
                 visited[current] = true;
                 // 计算当前节点与新节点的相似度
-                pq.push(std::make_pair(common_embd_similarity_cos(current->embedding.data(), embedding.data(), current->embedding.size()), current));
+                pq.push_back(std::make_pair(common_embd_similarity_cos(current->embedding.data(), embedding.data(), current->embedding.size()), current));
                 // 将其邻居入队
                 for (auto it: current->neighbors[i]) {
                     if (!visited[it]) {
-                        queue.push(std::make_pair(common_embd_similarity_cos(it->embedding.data(), embedding.data(), it->embedding.size()), it));
+                        queue.push(std::make_pair(common_embd_similarity_cos(embedding.data(), it->embedding.data(), embedding.size()), it));
                     }
                 }
             }
@@ -170,13 +159,8 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
             //std::cout << "HNSWIndex: 找到 " << pq.size() << " 个候选近邻节点" << std::endl;
             // 到此处，pq中存放了离待插入节点较近的efConstruciton个节点
             // 取出M个最相似的节点,与新节点建立连接
-            int connectedNodes = 0;
-            for (int j = 0; j < M && !pq.empty(); j++) {
-                newNode->neighbors[i].push_back(pq.top().second);
-                pq.pop();
+            simulated_annealing_select(pq, newNode, i, 1.0f);
 
-                connectedNodes++;
-            }
             //std::cout << "HNSWIndex: 新节点在第 " << i << " 层连接了 " << connectedNodes << " 个邻居" << std::endl;
             
             // 连接邻居节点与新节点，并在必要时进行调整

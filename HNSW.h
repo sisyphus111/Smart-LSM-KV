@@ -48,8 +48,8 @@ private:
 
 
 
-    std::vector<Node*> HNSWIndex::simulated_annealing_select(
-    const std::vector<Node*>& candidates,
+    void simulated_annealing_select(
+    std::vector<std::pair<float, Node*>>& scored_candidates,
     Node* center,
     int current_level,
     float temperature
