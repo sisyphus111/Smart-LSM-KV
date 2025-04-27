@@ -34,6 +34,10 @@ public:
     void del(uint64_t key); // 删除
 
     HNSWIndex();
+    HNSWIndex(const std::string &hnsw_data_root); // 从磁盘加载HNSW索引
+
+    void saveToDisk(const std::string &hnsw_data_root); // 保存HNSW索引到磁盘
+
     ~HNSWIndex();
 private:
     std::random_device rd;

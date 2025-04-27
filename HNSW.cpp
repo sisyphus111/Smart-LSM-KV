@@ -277,3 +277,29 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
 void HNSWIndex::del(uint64_t key) {
     deleted_nodes.insert(key);
 }
+
+
+
+// 从磁盘加载HNSW索引
+HNSWIndex::HNSWIndex(const std::string &hnsw_data_root) {
+
+
+
+}
+
+
+
+
+// 保存HNSW索引到磁盘
+void HNSWIndex::saveToDisk(const std::string &hnsw_data_root) {
+
+
+
+
+
+
+
+
+
+
+}

@@ -72,12 +72,13 @@ KVStore::~KVStore()
  * No return values for simplicity.
  */
 void KVStore::put(uint64_t key, const std::string &val) {
-
     if (val == DEL) {// 删除标记
+        hnswIndex->del(key);
         embeddings[key] = std::vector<float>(dim, std::numeric_limits<float>::max());
     }
     else {
         embeddings[key] = embedding(val)[0];
+        hnswIndex->insert(embeddings[key], key);
     }
 
     uint32_t nxtsize = s->getBytes();
@@ -159,12 +160,13 @@ std::string KVStore::get(uint64_t key) //
  * Returns false iff the key is not found.
  */
 bool KVStore::del(uint64_t key) {
-
-
     std::string res = get(key);
     if (!res.length())
         return false; // not exist
+
+    // 删除涉及的具体操作在put函数中进行
     put(key, DEL);    // put a del marker
+
 
     return true;
 }
@@ -198,8 +200,8 @@ void KVStore::reset() {
 }
 
 /**
-* @brief 重置disk中的键-嵌入向量存储，将其覆盖为：仅开头8Byte为768（维数）
-*/
+ * @brief 重置disk中的键-嵌入向量存储，将其覆盖为：仅开头8Byte为768（维数）
+ */
 void KVStore::reset_key_embedding_store() {
     // 打开文件，以二进制写入模式，并且需要覆盖原内容
     std::ofstream ofs(key_embedding_store, std::ios::binary | std::ios::trunc);
@@ -533,133 +535,45 @@ std::string KVStore::fetchString(std::string file, int startOffset, uint32_t len
 
 // 使用堆排序
 std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::string query, int k){
+    // 计算查询向量
+    std::vector<float> queryVec = embedding(query)[0];
+    // 遍历embeddings，计算相似度
 
+    //维护小顶堆
+    auto cmp = [](const std::pair<float, uint64_t>& a, const std::pair<float, uint64_t>& b) {
+        return a.first > b.first; // 小顶堆，比较float值
+    };
+    std::priority_queue<std::pair<float, uint64_t>, std::vector<std::pair<float, uint64_t>>, decltype(cmp)> minHeap(cmp);
+    for (auto it: embeddings) {
+        // 若该key已被删除，则跳过
+        if (get(it.first) == "")continue;
+        float sim = common_embd_similarity_cos(queryVec.data(), it.second.data(), dim);
+        minHeap.push(std::make_pair(sim, it.first));
 
+        // 若堆的大小超过了k，则弹出最小的元素
+        if (minHeap.size() > k) minHeap.pop();
+    }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // // 计算未被计算的嵌入向量
-    // std::vector<std::pair<uint64_t,std::string>> kv2embd;
-    // for (auto &it : cacheKey) {
-    //     if (cacheEmbedding.find(it) == cacheEmbedding.end()) {
-    //         // 需要计算嵌入向量的元素
-    //         kv2embd.push_back(std::make_pair(it, get(it)));
-    //     }
-    // }
-    // size_t n_kv2embd = kv2embd.size();
-    // std::vector<std::string> words;
-    // for (auto &it : kv2embd) {
-    //     words.push_back(it.second);
-    // }
-    // words.push_back(query);
-    // std::string joined = join(words, "\n");
-    // std::vector<std::vector<float>> vec = embedding(joined);
-    //
-    // int n_dim = vec[0].size();//嵌入向量维数
-    //
-    // //将除最后一行外的其他行存入cacheEmbedding
-    // for (size_t i = 0; i < n_kv2embd; i++) {
-    //     cacheEmbedding[kv2embd[i].first] = vec[i];
-    // }
-    //
-    //
-    // //维护小顶堆，取相似度最高的k个键值对
-    // auto cmp = [](const std::pair<float, uint64_t>& a, const std::pair<float, uint64_t>& b) {
-    //     return a.first > b.first; // 小顶堆，比较float值
-    // };
-    //
-    // std::priority_queue<std::pair<float, uint64_t>, std::vector<std::pair<float, uint64_t>>, decltype(cmp)> minHeap(cmp);
-    //
-    // for (auto &it:cacheEmbedding) {
-    //     if (cacheKey.find(it.first) == cacheKey.end())continue;//不存在该元素
-    //     float sim = common_embd_similarity_cos(it.second.data(), vec[n_kv2embd].data(), n_dim);
-    //     if (minHeap.size() < k || sim > minHeap.top().first) {
-    //         minHeap.push(std::make_pair(sim, it.first));
-    //         if (minHeap.size() > k) minHeap.pop();
-    //     }
-    // }
-    //
-    //
-    // //将小顶堆中的元素存入向量，每次存入开头部分，以达到降序排列
-    // std::vector<std::pair<uint64_t, std::string>> result;
-    // while (!minHeap.empty()){
-    //     result.insert(result.begin(), std::make_pair(minHeap.top().second, get(minHeap.top().second)));
-    //     minHeap.pop();
-    // }
-    // return result;
+    //将小顶堆中的元素存入向量，每次存入开头部分，以达到降序排列
+    std::vector<std::pair<uint64_t, std::string>> result;
+    while (!minHeap.empty()){
+        result.insert(result.begin(), std::make_pair(minHeap.top().second, get(minHeap.top().second)));
+        minHeap.pop();
+    }
+    return result;
 }
 
 
 std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn_hnsw(std::string query, int k){
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    //     // 计算未被计算的嵌入向量
-    //     std::vector<uint64_t> calcEmbd;
-    //     for (auto &it: cacheKey_HNSW) {
-    //         calcEmbd.push_back(it);
-    //     }
-    //
-    //     std::vector<std::string> words;
-    //     for (auto &it : calcEmbd) {
-    //         words.push_back(get(it));
-    //     }
-    //     words.push_back(query);
-    //
-    //     std::string joined = join(words, "\n");
-    //     std::vector<std::vector<float>> vec = embedding(joined);
-    //
-    //
-    //     // 将算得的嵌入向量存入HNSWIndex
-    //     for (size_t i = 0; i < calcEmbd.size(); i++) {
-    //         hnswIndex->insert(vec[i], calcEmbd[i]);
-    //     }
-    //
-    // //清空缓存
-    // cacheKey_HNSW.clear();
-    //
-    // // 核心搜索部分
-    // std::vector<uint64_t> result_key = hnswIndex->search_knn_hnsw(vec[vec.size() - 1], k);
-    //
-    //
-    // std::vector<std::pair<std::uint64_t, std::string>> result;
-    // for (auto &it: result_key) {
-    //     result.push_back(std::make_pair(it, get(it)));
-    // }
-    // return result;
-
+    // 计算查询向量
+    std::vector<float> queryVec = embedding(query)[0];
+    std::vector<uint64_t> result_key = hnswIndex->search_knn_hnsw(queryVec, k);
+    // 将结果键值对存入向量
+    std::vector<std::pair<std::uint64_t, std::string>> result;
+    for (auto &it: result_key) {
+        result.push_back(std::make_pair(it, get(it)));
+    }
+    return result;
 }
 
 /**
@@ -726,3 +640,22 @@ void KVStore::load_embedding_from_disk(const std::string &data_root) {
     return;
 }
 
+/**
+ * @brief 将HNSW索引保存到磁盘
+ * @param hnsw_data_root HNSW保存的路径根目录
+*/
+void KVStore::save_hnsw_index_to_disk(const std::string &hnsw_data_root) {
+    if (!hnswIndex) return;
+    hnswIndex->saveToDisk(hnsw_data_root);
+}
+
+
+
+/**
+ * @brief 从磁盘加载HNSW索引
+ * @param hnsw_data_root HNSW保存的路径根目录
+*/
+void KVStore::load_hnsw_index_to_disk(const std::string &hnsw_data_root) {
+    if (hnswIndex) delete hnswIndex;
+    hnswIndex = new HNSWIndex(hnsw_data_root);
+}

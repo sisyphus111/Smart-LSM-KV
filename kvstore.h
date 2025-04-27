@@ -1,6 +1,7 @@
 #pragma once
 
 #define key_embedding_store "data/embedding.bin"
+#define hnsw_path "data/hnsw_data_root/"
 #define dim 768
 
 #include "kvstore_api.h"
@@ -30,10 +31,6 @@ private:
     std::unordered_map<uint64_t, std::vector<float>> embeddings;// phase4，存放key-embedding对，支持磁盘读
 
 
-    // std::set<uint64_t> cacheKey; // 缓存所有键（phase2添加）
-    // std::unordered_map<uint64_t, std::vector<float>> cacheEmbedding; // 缓存所有嵌入向量（phase2添加）
-    // std::set<uint64_t> cacheKey_HNSW;// key的缓冲区，在search_knn_show时批量计算嵌入向量（phase3添加）
-
 
 public:
     KVStore(const std::string &dir);
@@ -58,8 +55,13 @@ public:
 
     std::string fetchString(std::string file, int startOffset, uint32_t len);
 
+    // 持久化存储嵌入向量
     void save_embedding_to_disk(const std::string &filename = key_embedding_store);
     void load_embedding_from_disk(const std::string &data_root = key_embedding_store);
+
+    // 持久化存储HNSW结构
+    void save_hnsw_index_to_disk(const std::string &hnsw_data_root = hnsw_path);
+    void load_hnsw_index_to_disk(const std::string &hnsw_data_root = hnsw_path);
 
     std::vector<std::pair<std::uint64_t, std::string>> search_knn(std::string query, int k);
     std::vector<std::pair<std::uint64_t, std::string>> search_knn_hnsw(std::string query, int k);
