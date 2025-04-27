@@ -10,7 +10,6 @@
 #include <iostream>
 #include <fstream>
 #include <queue>
-#include <set>
 #include <string>
 #include <utility>
 
@@ -74,15 +73,12 @@ KVStore::~KVStore()
  */
 void KVStore::put(uint64_t key, const std::string &val) {
 
-    if (val == DEL) {
-        cacheKey.erase(key);
-        cacheKey_HNSW.erase(key);
+    if (val == DEL) {// 删除标记
+        embeddings[key] = std::vector<float>(dim, std::numeric_limits<float>::max());
     }
     else {
-        cacheKey.insert(key); // 加入缓存
-        cacheKey_HNSW.insert(key);
+        embeddings[key] = embedding(val)[0];
     }
-    cacheEmbedding.erase(key);// 删除原有的嵌入向量，待日后计算
 
     uint32_t nxtsize = s->getBytes();
     std::string res  = s->search(key);
@@ -164,10 +160,6 @@ std::string KVStore::get(uint64_t key) //
  */
 bool KVStore::del(uint64_t key) {
 
-    cacheKey.erase(key);//从缓存中删除
-    cacheKey_HNSW.erase(key);
-    cacheEmbedding.erase(key);
-
 
     std::string res = get(key);
     if (!res.length())
@@ -182,6 +174,10 @@ bool KVStore::del(uint64_t key) {
  * including memtable and all sstables files.
  */
 void KVStore::reset() {
+    // 清空嵌入向量的持久化存储和内存存储
+    reset_key_embedding_store();
+    embeddings.clear();
+
     s->reset(); // 先清空memtable
     std::vector<std::string> files;
     for (int level = 0; level <= totalLevel; ++level) { // 依层清空每一层的sstables
@@ -198,9 +194,28 @@ void KVStore::reset() {
 
     if (hnswIndex)delete hnswIndex;
     hnswIndex = new HNSWIndex();
-    cacheEmbedding.clear();
-    cacheKey.clear();
-    cacheKey_HNSW.clear();
+
+}
+
+/**
+* @brief 重置disk中的键-嵌入向量存储，将其覆盖为：仅开头8Byte为768（维数）
+*/
+void KVStore::reset_key_embedding_store() {
+    // 打开文件，以二进制写入模式，并且需要覆盖原内容
+    std::ofstream ofs(key_embedding_store, std::ios::binary | std::ios::trunc);
+
+    // 检查文件是否成功打开
+    if (!ofs.is_open()) {
+        std::cerr << "无法打开文件: " << key_embedding_store << std::endl;
+        return;
+    }
+
+    // 写入表示嵌入向量维度的值(768)到文件开头8字节
+    uint64_t dimension = 768;
+    ofs.write(reinterpret_cast<char*>(&dimension), sizeof(uint64_t));
+
+    // 关闭文件
+    ofs.close();
 }
 
 /**
@@ -519,93 +534,195 @@ std::string KVStore::fetchString(std::string file, int startOffset, uint32_t len
 // 使用堆排序
 std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::string query, int k){
 
-    // 计算未被计算的嵌入向量
-    std::vector<std::pair<uint64_t,std::string>> kv2embd;
-    for (auto &it : cacheKey) {
-        if (cacheEmbedding.find(it) == cacheEmbedding.end()) {
-            // 需要计算嵌入向量的元素
-            kv2embd.push_back(std::make_pair(it, get(it)));
-        }
-    }
-    size_t n_kv2embd = kv2embd.size();
-    std::vector<std::string> words;
-    for (auto &it : kv2embd) {
-        words.push_back(it.second);
-    }
-    words.push_back(query);
-    std::string joined = join(words, "\n");
-    std::vector<std::vector<float>> vec = embedding(joined);
-
-    int n_dim = vec[0].size();//嵌入向量维数
-
-    //将除最后一行外的其他行存入cacheEmbedding
-    for (size_t i = 0; i < n_kv2embd; i++) {
-        cacheEmbedding[kv2embd[i].first] = vec[i];
-    }
 
 
-    //维护小顶堆，取相似度最高的k个键值对
-    auto cmp = [](const std::pair<float, uint64_t>& a, const std::pair<float, uint64_t>& b) {
-        return a.first > b.first; // 小顶堆，比较float值
-    };
-
-    std::priority_queue<std::pair<float, uint64_t>, std::vector<std::pair<float, uint64_t>>, decltype(cmp)> minHeap(cmp);
-
-    for (auto &it:cacheEmbedding) {
-        if (cacheKey.find(it.first) == cacheKey.end())continue;//不存在该元素
-        float sim = common_embd_similarity_cos(it.second.data(), vec[n_kv2embd].data(), n_dim);
-        if (minHeap.size() < k || sim > minHeap.top().first) {
-            minHeap.push(std::make_pair(sim, it.first));
-            if (minHeap.size() > k) minHeap.pop();
-        }
-    }
 
 
-    //将小顶堆中的元素存入向量，每次存入开头部分，以达到降序排列
-    std::vector<std::pair<uint64_t, std::string>> result;
-    while (!minHeap.empty()){
-        result.insert(result.begin(), std::make_pair(minHeap.top().second, get(minHeap.top().second)));
-        minHeap.pop();
-    }
-    return result;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // // 计算未被计算的嵌入向量
+    // std::vector<std::pair<uint64_t,std::string>> kv2embd;
+    // for (auto &it : cacheKey) {
+    //     if (cacheEmbedding.find(it) == cacheEmbedding.end()) {
+    //         // 需要计算嵌入向量的元素
+    //         kv2embd.push_back(std::make_pair(it, get(it)));
+    //     }
+    // }
+    // size_t n_kv2embd = kv2embd.size();
+    // std::vector<std::string> words;
+    // for (auto &it : kv2embd) {
+    //     words.push_back(it.second);
+    // }
+    // words.push_back(query);
+    // std::string joined = join(words, "\n");
+    // std::vector<std::vector<float>> vec = embedding(joined);
+    //
+    // int n_dim = vec[0].size();//嵌入向量维数
+    //
+    // //将除最后一行外的其他行存入cacheEmbedding
+    // for (size_t i = 0; i < n_kv2embd; i++) {
+    //     cacheEmbedding[kv2embd[i].first] = vec[i];
+    // }
+    //
+    //
+    // //维护小顶堆，取相似度最高的k个键值对
+    // auto cmp = [](const std::pair<float, uint64_t>& a, const std::pair<float, uint64_t>& b) {
+    //     return a.first > b.first; // 小顶堆，比较float值
+    // };
+    //
+    // std::priority_queue<std::pair<float, uint64_t>, std::vector<std::pair<float, uint64_t>>, decltype(cmp)> minHeap(cmp);
+    //
+    // for (auto &it:cacheEmbedding) {
+    //     if (cacheKey.find(it.first) == cacheKey.end())continue;//不存在该元素
+    //     float sim = common_embd_similarity_cos(it.second.data(), vec[n_kv2embd].data(), n_dim);
+    //     if (minHeap.size() < k || sim > minHeap.top().first) {
+    //         minHeap.push(std::make_pair(sim, it.first));
+    //         if (minHeap.size() > k) minHeap.pop();
+    //     }
+    // }
+    //
+    //
+    // //将小顶堆中的元素存入向量，每次存入开头部分，以达到降序排列
+    // std::vector<std::pair<uint64_t, std::string>> result;
+    // while (!minHeap.empty()){
+    //     result.insert(result.begin(), std::make_pair(minHeap.top().second, get(minHeap.top().second)));
+    //     minHeap.pop();
+    // }
+    // return result;
 }
 
 
 std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn_hnsw(std::string query, int k){
 
-        // 计算未被计算的嵌入向量
-        std::vector<uint64_t> calcEmbd;
-        for (auto &it: cacheKey_HNSW) {
-            calcEmbd.push_back(it);
-        }
-
-        std::vector<std::string> words;
-        for (auto &it : calcEmbd) {
-            words.push_back(get(it));
-        }
-        words.push_back(query);
-
-        std::string joined = join(words, "\n");
-        std::vector<std::vector<float>> vec = embedding(joined);
 
 
-        // 将算得的嵌入向量存入HNSWIndex
-        for (size_t i = 0; i < calcEmbd.size(); i++) {
-            hnswIndex->insert(vec[i], calcEmbd[i]);
-        }
-
-    //清空缓存
-    cacheKey_HNSW.clear();
-
-    // 核心搜索部分
-    std::vector<uint64_t> result_key = hnswIndex->search_knn_hnsw(vec[vec.size() - 1], k);
 
 
-    std::vector<std::pair<std::uint64_t, std::string>> result;
-    for (auto &it: result_key) {
-        result.push_back(std::make_pair(it, get(it)));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    //     // 计算未被计算的嵌入向量
+    //     std::vector<uint64_t> calcEmbd;
+    //     for (auto &it: cacheKey_HNSW) {
+    //         calcEmbd.push_back(it);
+    //     }
+    //
+    //     std::vector<std::string> words;
+    //     for (auto &it : calcEmbd) {
+    //         words.push_back(get(it));
+    //     }
+    //     words.push_back(query);
+    //
+    //     std::string joined = join(words, "\n");
+    //     std::vector<std::vector<float>> vec = embedding(joined);
+    //
+    //
+    //     // 将算得的嵌入向量存入HNSWIndex
+    //     for (size_t i = 0; i < calcEmbd.size(); i++) {
+    //         hnswIndex->insert(vec[i], calcEmbd[i]);
+    //     }
+    //
+    // //清空缓存
+    // cacheKey_HNSW.clear();
+    //
+    // // 核心搜索部分
+    // std::vector<uint64_t> result_key = hnswIndex->search_knn_hnsw(vec[vec.size() - 1], k);
+    //
+    //
+    // std::vector<std::pair<std::uint64_t, std::string>> result;
+    // for (auto &it: result_key) {
+    //     result.push_back(std::make_pair(it, get(it)));
+    // }
+    // return result;
+
+}
+
+/**
+ * @brief 将KVStore中embeddings中存储的键-嵌入对写入磁盘，并清空embeddings
+ * @param filename 文件路径
+ */
+void KVStore::save_embedding_to_disk(const std::string &filename) {
+    // 打开文件，使用二进制追加模式
+    std::ofstream outfile(filename, std::ios::binary | std::ios::app);
+
+    // 检查文件是否成功打开
+    if (!outfile.is_open()) {
+        std::cerr << "无法打开文件进行追加写入: " << filename << std::endl;
+        return;
     }
-    return result;
+
+    for (auto it: embeddings) {
+        // 先写入8B的key
+        outfile.write((const char *)(&(it.first)), sizeof(uint64_t));
+        // 再写入768*8B的embedding
+        for (size_t i = 0; i < it.second.size(); ++i) {
+            outfile.write((const char *)(it.second.data() + i), sizeof(float));
+        }
+    }
+
+    // 关闭文件
+    outfile.close();
+
+    // 清空内存中的embeddings
+    embeddings.clear();
+}
+
+
+/**
+ * @brief 系统启动时，从磁盘加载嵌入向量，放置到embeddings中
+ * @param data_root 存放键-嵌入对的文件路径
+ */
+void KVStore::load_embedding_from_disk(const std::string &data_root) {
+    // 打开文件，使用二进制读模式
+    std::ifstream infile(data_root, std::ios::binary);
+    // 检查文件是否成功打开
+    if (!infile.is_open()) {
+        std::cerr << "无法打开文件进行读取: " << data_root << std::endl;
+        return;
+    }
+    // 读取嵌入向量的维度
+    uint64_t dimension;
+    infile.read((char *)&dimension, sizeof(uint64_t));
+    if (dimension != 768) {
+        std::cerr << "嵌入向量维度不匹配: " << dimension << std::endl;
+        infile.close();
+        return;
+    }
+    // 读取键-嵌入对
+    while (infile.peek() != EOF) {
+        uint64_t key;
+        infile.read((char *)&key, sizeof(uint64_t));
+        std::vector<float> embedding(dimension);
+        infile.read((char *)embedding.data(), dimension * sizeof(float));
+        embeddings[key] = embedding;
+    }
+    // 关闭文件
+    infile.close();
+    return;
 }
 

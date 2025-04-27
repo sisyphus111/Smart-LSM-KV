@@ -1,5 +1,8 @@
 #pragma once
 
+#define key_embedding_store "data/embedding.bin"
+#define dim 768
+
 #include "kvstore_api.h"
 #include "skiplist.h"
 #include "sstable.h"
@@ -22,11 +25,14 @@ private:
 
     int totalLevel = -1; // 层数
 
-    std::set<uint64_t> cacheKey; // 缓存所有键
-    std::unordered_map<uint64_t, std::vector<float>> cacheEmbedding; // 缓存所有嵌入向量
+    HNSWIndex* hnswIndex; // HNSW索引
 
-    HNSWIndex* hnswIndex; // HNSW索引，存储所有键值对
-    std::set<uint64_t> cacheKey_HNSW;// key的缓冲区，在search_knn_show时批量计算嵌入向量
+    std::unordered_map<uint64_t, std::vector<float>> embeddings;// phase4，存放key-embedding对，支持磁盘读
+
+
+    // std::set<uint64_t> cacheKey; // 缓存所有键（phase2添加）
+    // std::unordered_map<uint64_t, std::vector<float>> cacheEmbedding; // 缓存所有嵌入向量（phase2添加）
+    // std::set<uint64_t> cacheKey_HNSW;// key的缓冲区，在search_knn_show时批量计算嵌入向量（phase3添加）
 
 
 public:
@@ -41,6 +47,7 @@ public:
     bool del(uint64_t key) override;
 
     void reset() override;
+    void reset_key_embedding_store();
 
     void scan(uint64_t key1, uint64_t key2, std::list<std::pair<uint64_t, std::string>> &list) override;
 
@@ -50,6 +57,9 @@ public:
     void addsstable(sstable ss, int level); // 将ss加入缓存
 
     std::string fetchString(std::string file, int startOffset, uint32_t len);
+
+    void save_embedding_to_disk(const std::string &filename = key_embedding_store);
+    void load_embedding_from_disk(const std::string &data_root = key_embedding_store);
 
     std::vector<std::pair<std::uint64_t, std::string>> search_knn(std::string query, int k);
     std::vector<std::pair<std::uint64_t, std::string>> search_knn_hnsw(std::string query, int k);
