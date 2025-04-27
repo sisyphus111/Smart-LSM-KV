@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
 
-#project(LSM_TREE)
 project(LSM_TREE CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -8,12 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 
-option(GGML_CUDA "Enable CUDA in ggml" ON)
-set(GGML_CUDA_GRAPHS_DEFAULT ON)
 
-if(GGML_CUDA)
-    message(STATUS "Using CUDA in ggml")
-endif()
+set(GGML_CUDA_GRAPHS_DEFAULT ON)
+set(GGML_CUDA_FORCE_MMQ ON)
+set(GGML_CUDA_FORCE_CUBLAS ON)
 
 
 
