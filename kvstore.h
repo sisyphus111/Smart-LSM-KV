@@ -2,7 +2,7 @@
 
 #define key_embedding_store "data/embedding.bin"
 #define hnsw_path "data/hnsw_data_root/"
-#define dim 768
+#define vec_dim 768
 
 #include "kvstore_api.h"
 #include "skiplist.h"

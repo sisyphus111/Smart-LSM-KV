@@ -74,7 +74,7 @@ KVStore::~KVStore()
 void KVStore::put(uint64_t key, const std::string &val) {
     if (val == DEL) {// 删除标记
         hnswIndex->del(key);
-        embeddings[key] = std::vector<float>(dim, std::numeric_limits<float>::max());
+        embeddings[key] = std::vector<float>(vec_dim, std::numeric_limits<float>::max());
     }
     else {
         embeddings[key] = embedding(val)[0];
@@ -547,7 +547,7 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
     for (auto it: embeddings) {
         // 若该key已被删除，则跳过
         if (get(it.first) == "")continue;
-        float sim = common_embd_similarity_cos(queryVec.data(), it.second.data(), dim);
+        float sim = common_embd_similarity_cos(queryVec.data(), it.second.data(), vec_dim);
         minHeap.push(std::make_pair(sim, it.first));
 
         // 若堆的大小超过了k，则弹出最小的元素
