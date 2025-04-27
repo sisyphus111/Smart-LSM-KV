@@ -8,6 +8,10 @@
 /cmake_install.cmake
 /Makefile
 
+# Ignore reference string-vector files
+/100k_data_ref
+
+
 # Ignore executables and libraries
 *.exe
 *.out
