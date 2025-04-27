@@ -53,8 +53,4 @@ public:
 
     std::vector<std::pair<std::uint64_t, std::string>> search_knn(std::string query, int k);
     std::vector<std::pair<std::uint64_t, std::string>> search_knn_hnsw(std::string query, int k);
-
-    // 直接接收嵌入向量，其他与原函数没有去别的的search_knn_vector和search_knn_hnsw_vector函数，phase3测试用
-    std::vector<std::pair<std::uint64_t, std::string>> search_knn_vector(const std::vector<float> &query, int k);
-    std::vector<std::pair<std::uint64_t, std::string>> search_knn_hnsw_vector(const std::vector<float> &query, int k);
 };
