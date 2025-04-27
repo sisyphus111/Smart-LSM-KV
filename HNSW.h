@@ -2,17 +2,18 @@
 #include <vector>
 #include <cstdint>
 #include <random>
+#include <set>
 #include "embedding.h"
 
 #define max_L 6
 
 
 struct Node {
-    std::vector<float> embedding; // 节点的向量
+    uint64_t key; // key
+    std::vector<float> embedding; // 嵌入向量
 
     std::vector<std::vector<Node *>> neighbors; // 每层的邻居节点们
 
-    uint64_t key;
     int level; // 节点的层数
 
     int m_L = max_L; // 节点的最高层数
@@ -22,13 +23,15 @@ struct Node {
     }
 };
 
-// 注：这个HNSWIndex似乎不支持删除
-// 另外，插入键相同的键值对的规定行为是覆盖，但这里不支持
+
+// 注：修改功能未实现，不知道怎么实现
 class HNSWIndex {
 public:
 
     void insert(const std::vector<float>& embedding, uint64_t key); // 插入
     std::vector<uint64_t> search_knn_hnsw(const std::vector<float>& query, int k); // 搜索k个最近邻，按照相似度降序返回key的向量
+
+    void del(uint64_t key); // 删除
 
     HNSWIndex();
     ~HNSWIndex();
@@ -45,15 +48,10 @@ private:
     double grow = 0.2; // 节点的增长率
 
 
+    std::set<uint64_t> deleted_nodes;// 已删除的结点集合
 
 
-
-    void simulated_annealing_select(
-    std::vector<std::pair<float, Node*>>& scored_candidates,
-    Node* center,
-    int current_level,
-    float temperature
-    );// 模拟退火选择邻居
+    void simulated_annealing_select(std::vector<std::pair<float, Node*>>& scored_candidates, Node* center, int current_level, float temperature);// 模拟退火选择邻居
     Node *entry; // 查找、插入的入口节点
     int getRandomLevel(); // 获取随机层数
 };

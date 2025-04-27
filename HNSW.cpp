@@ -9,6 +9,7 @@
 HNSWIndex::HNSWIndex():gen(rd()) {
     //std::cout << "HNSWIndex: 创建新的HNSW索引" << std::endl;
     entry = nullptr;
+    deleted_nodes.clear();
 }
 
 HNSWIndex::~HNSWIndex() {
@@ -261,13 +262,18 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
     
     //std::cout << "HNSWIndex: 共找到 " << pq.size() << " 个候选近邻节点" << std::endl;
 
-    // 从优先级队列中取前k项，作为最终输出
+    // 从优先级队列中取前k项不在deleted_node中的结点，作为最终输出
     std::vector<uint64_t> result;
     while (!pq.empty() && result.size() < k) {
-        result.push_back(pq.top().second->key);
+        if ( !deleted_nodes.contains(pq.top().second->key) )result.push_back(pq.top().second->key); // 若该结点未被删除，则加入结果
         pq.pop();
     }
 
     //std::cout << "HNSWIndex: 返回 " << result.size() << " 个最近邻结果" << std::endl;
     return result;
+}
+
+
+void HNSWIndex::del(uint64_t key) {
+    deleted_nodes.insert(key);
 }
