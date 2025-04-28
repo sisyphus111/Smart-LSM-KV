@@ -575,7 +575,7 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
     //将小顶堆中的元素存入向量，每次存入开头部分，以达到降序排列
     std::vector<std::pair<uint64_t, std::string>> result;
     while (!minHeap.empty()){
-        result.push_back(std::make_pair(minHeap.top().second, get(minHeap.top().second)));
+        result.insert(result.begin(), std::make_pair(minHeap.top().second, get(minHeap.top().second)));
         minHeap.pop();
     }
     return result;
