@@ -702,8 +702,8 @@ void KVStore::load_hnsw_index_from_disk(const std::string &hnsw_data_root) {
         return;// HNSW中没有结点
     }
     // 读取所有结点的数据，建立离散结点，并维护id至结点的映射
-    std::unordered_map<uint64_t, Node*> map;
-    for (uint64_t index = 0; index < num_nodes; index++) {
+    std::unordered_map<uint32_t, Node*> map;
+    for (uint32_t index = 0; index < num_nodes; index++) {
         // 读取header.bin文件
         std::string header_filename = hnsw_data_root + "nodes/" + std::to_string(index) + "/header.bin";
         std::ifstream header_file(header_filename, std::ios::binary);
@@ -760,7 +760,7 @@ void KVStore::load_hnsw_index_from_disk(const std::string &hnsw_data_root) {
             neighbor_file.read((char *)&neighborNum, sizeof(uint32_t));
             for (uint32_t i = 0; i < neighborNum; i++) {
                 // 读取邻居id
-                uint64_t neighbor_id;
+                uint32_t neighbor_id;
                 neighbor_file.read((char *)&neighbor_id, sizeof(uint32_t));
                 // 将邻居连接到当前结点
                 map[index]->neighbors[l].push_back(map[neighbor_id]);

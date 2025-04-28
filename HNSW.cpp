@@ -361,15 +361,13 @@ void HNSWIndex::saveToDisk(const std::string &hnsw_data_root) {
                         neighborNum--;
                     }
                 }
-
-
                 // 写入邻接信息
                 neighbor_file.write((const char *)&neighborNum, sizeof(uint32_t));
                 for (auto it: cur->neighbors[l]) {
                     if (deleted_nodes.contains(it->embedding)) continue;
 
                     // 未被删除，则将其id写入文件
-                    uint64_t neighbor_id = map[it];
+                    uint32_t neighbor_id = map[it];
                     neighbor_file.write((const char *)&(neighbor_id), sizeof(uint32_t));
                 }
                 // 关闭文件
