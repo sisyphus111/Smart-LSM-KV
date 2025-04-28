@@ -55,6 +55,11 @@ KVStore::KVStore(const std::string &dir) :
 
 KVStore::~KVStore()
 {
+
+    // 退出时保存嵌入向量
+    save_embedding_to_disk();
+
+
     sstable ss(s);
     if (!ss.getCnt())
         return; // empty sstable
@@ -73,7 +78,7 @@ KVStore::~KVStore()
  */
 void KVStore::put(uint64_t key, const std::string &val) {
     if (val == DEL) {// 删除标记
-        hnswIndex->del(key);
+        hnswIndex->del(embedding(val)[0]);
         embeddings[key] = std::vector<float>(vec_dim, std::numeric_limits<float>::max());
     }
     else {
@@ -544,6 +549,7 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
         return a.first > b.first; // 小顶堆，比较float值
     };
     std::priority_queue<std::pair<float, uint64_t>, std::vector<std::pair<float, uint64_t>>, decltype(cmp)> minHeap(cmp);
+
     for (auto it: embeddings) {
         // 若该key已被删除，则跳过
         if (get(it.first) == "")continue;
@@ -551,13 +557,13 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
         minHeap.push(std::make_pair(sim, it.first));
 
         // 若堆的大小超过了k，则弹出最小的元素
-        if (minHeap.size() > k) minHeap.pop();
+        while (minHeap.size() > k) minHeap.pop();
     }
 
     //将小顶堆中的元素存入向量，每次存入开头部分，以达到降序排列
     std::vector<std::pair<uint64_t, std::string>> result;
     while (!minHeap.empty()){
-        result.insert(result.begin(), std::make_pair(minHeap.top().second, get(minHeap.top().second)));
+        result.push_back(std::make_pair(minHeap.top().second, get(minHeap.top().second)));
         minHeap.pop();
     }
     return result;
@@ -637,7 +643,6 @@ void KVStore::load_embedding_from_disk(const std::string &data_root) {
     }
     // 关闭文件
     infile.close();
-    return;
 }
 
 /**
