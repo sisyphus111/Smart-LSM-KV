@@ -53,8 +53,6 @@ private:
 
     std::set<std::vector<float>> deleted_nodes;// 已删除的向量集合
 
-
-    void simulated_annealing_select(std::vector<std::pair<float, Node*>>& scored_candidates, Node* center, int current_level, float temperature);// 模拟退火选择邻居
     Node *entry; // 查找、插入的入口节点
     int getRandomLevel(); // 获取随机层数
 };

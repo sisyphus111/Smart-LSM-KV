@@ -52,39 +52,6 @@ HNSWIndex::~HNSWIndex() {
     //std::cout << "HNSWIndex: 共删除了 " << deletedNodes << " 个节点" << std::endl;
 }
 
-void HNSWIndex::simulated_annealing_select(
-    std::vector<std::pair<float, Node*>>& scored_candidates,
-    Node* center,
-    int current_level,
-    float temperature
-) {
-    // 按相似度降序排序
-    std::sort(scored_candidates.begin(), scored_candidates.end(),
-        [](const auto& a, const auto& b) { return a.first > b.first; });
-
-    // 3. 模拟退火选择
-    float avg_sim = std::accumulate(
-        scored_candidates.begin(), scored_candidates.end(), 0.0f,
-        [](float sum, const auto& p) { return sum + p.first; }
-    ) / scored_candidates.size();
-
-    std::uniform_real_distribution<float> dist(0, 1);
-    for (const auto& [sim, node] : scored_candidates) {
-        // 计算能量差（这里用相似度差值）
-        float delta = sim - avg_sim;
-
-        // 退火概率公式：p = exp(ΔE / T)
-        float accept_prob = std::exp(delta / temperature);
-
-        // 接受条件：1) 概率达标 或 2) 强制保留Top 2节点
-        if (accept_prob > dist(gen) || center->neighbors[current_level].size() < 2) {
-            center->neighbors[current_level].push_back(node);
-            if (center->neighbors[current_level].size() >= M) break;
-        }
-    }
-
-    return;
-}
 
 
 int HNSWIndex::getRandomLevel() {
@@ -142,13 +109,15 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
         else {
             //std::cout << "HNSWIndex: 第 " << i << " 层 (新节点层级范围内)，BFS搜索近邻" << std::endl;
             // 在新节点的层数之下，利用类似BFS的方法在每层中寻找与q最近邻的efConstruction个点，再从中选出M个最近邻进行连接
+
+
             std::priority_queue<std::pair<float, Node*>> queue;
             std::unordered_map<Node*, bool> visited;
             // 存放efConstruction个点的大顶堆
-            std::vector<std::pair<float, Node*>> pq;
+            std::priority_queue<std::pair<float, Node*>> pq;
 
-
-            queue.push(std::make_pair(common_embd_similarity_cos(embedding.data(), cur->embedding.data(), embedding.size()), cur));
+            float sim = common_embd_similarity_cos(cur->embedding.data(), embedding.data(), cur->embedding.size());
+            queue.push(std::make_pair(sim, cur));
 
             while (!queue.empty() && pq.size() < efConstruction) {
                 Node *current = queue.top().second;
@@ -156,11 +125,11 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
                 if (visited[current]) continue;
                 visited[current] = true;
                 // 计算当前节点与新节点的相似度
-                pq.push_back(std::make_pair(common_embd_similarity_cos(current->embedding.data(), embedding.data(), current->embedding.size()), current));
+                pq.push(std::make_pair(common_embd_similarity_cos(current->embedding.data(), embedding.data(), current->embedding.size()), current));
                 // 将其邻居入队
                 for (auto it: current->neighbors[i]) {
                     if (!visited[it]) {
-                        queue.push(std::make_pair(common_embd_similarity_cos(embedding.data(), it->embedding.data(), embedding.size()), it));
+                        queue.push(std::make_pair(common_embd_similarity_cos(it->embedding.data(), embedding.data(), it->embedding.size()), it));
                     }
                 }
             }
@@ -168,10 +137,15 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
             //std::cout << "HNSWIndex: 找到 " << pq.size() << " 个候选近邻节点" << std::endl;
             // 到此处，pq中存放了离待插入节点较近的efConstruciton个节点
             // 取出M个最相似的节点,与新节点建立连接
-            simulated_annealing_select(pq, newNode, i, 1.0f);
+            int connectedNodes = 0;
+            for (int j = 0; j < M && !pq.empty(); j++) {
+                newNode->neighbors[i].push_back(pq.top().second);
+                pq.pop();
 
+                connectedNodes++;
+            }
             //std::cout << "HNSWIndex: 新节点在第 " << i << " 层连接了 " << connectedNodes << " 个邻居" << std::endl;
-            
+
             // 连接邻居节点与新节点，并在必要时进行调整
             int pruned = 0;
             for (auto it: newNode->neighbors[i]) {
@@ -208,12 +182,7 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
         }
     }
 
-
-    // 若插入的结点比入口结点高，则将entry指向新节点
-    if (newLevel > entry->level) {
-        //std::cout << "HNSWIndex: 新节点高于入口节点，更新入口节点" << std::endl;
-        entry = newNode;
-    }
+    if (newNode->level > entry->level)entry = newNode;
     //std::cout << "HNSWIndex: 节点插入完成，key=" << key << std::endl;
 }
 
@@ -316,32 +285,36 @@ void HNSWIndex::saveToDisk(const std::string &hnsw_data_root) {
     if (entry) {
         max_level = entry->level;
 
-        // 从entry结点开始遍历，写入各个结点的数据，并维护结点至id的映射
+        // 从最底层(Level 0)开始广度优先遍历，确保访问所有节点
         std::unordered_map<Node*, uint64_t> map;
-
-        // 从入口结点开始，在每层进行DFS遍历，建立所有结点与id的映射
-        for (int i = 0; i < entry->level; i++) {
-
-            std::queue<Node*> q;
-            q.push(entry);
-
-            while (!q.empty()) {
-                Node *current = q.front();
-                q.pop();
-                if (map.find(current) == map.end() && !deleted_nodes.contains(current->embedding)) {// 还未访问到，且未被删除
-                    // 为结点分配id
-                    map[current] = nodeId++;
-                }
-                // 将该层的未被访问邻居入队
-                for (auto it: current->neighbors[i]) {
-                    if (map.find(it) == map.end()) {
-                        q.push(it);
+        std::queue<Node*> q;
+        q.push(entry);
+        
+        // 首先收集所有节点
+        while (!q.empty()) {
+            Node *current = q.front();
+            q.pop();
+            
+            // 如果节点未被处理且未被删除，则分配ID
+            if (map.find(current) == map.end() && !deleted_nodes.contains(current->embedding)) {
+                map[current] = nodeId++;
+                
+                // 处理该节点的所有层的邻居
+                for (int l = 0; l < current->level; l++) {
+                    for (auto neighbor : current->neighbors[l]) {
+                        // 只将未处理且未删除的节点加入队列
+                        if (map.find(neighbor) == map.end() && 
+                            !deleted_nodes.contains(neighbor->embedding)) {
+                            q.push(neighbor);
+                        }
                     }
                 }
             }
         }
-        // 此时nodeId即为结点的总数
+        
+        // 设置节点总数
         num_nodes = map.size();
+        
         // HNSW中所有节点均已分配id，开始写入数据
         for (auto it: map) {
             // 该结点的指针和id

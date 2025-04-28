@@ -696,8 +696,11 @@ void KVStore::load_hnsw_index_from_disk(const std::string &hnsw_data_root) {
     global_header_file.close();
 
 
-    if (num_nodes == 0)return;// HNSW中没有结点
-
+    if (num_nodes == 0) {
+        if (hnswIndex) delete hnswIndex;
+        hnswIndex = new HNSWIndex(M, M_max, efConstruction, nullptr, m_L);
+        return;// HNSW中没有结点
+    }
     // 读取所有结点的数据，建立离散结点，并维护id至结点的映射
     std::unordered_map<uint64_t, Node*> map;
     for (uint64_t index = 0; index < num_nodes; index++) {
