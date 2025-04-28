@@ -229,7 +229,7 @@ void KVStore::reset_key_embedding_store() {
         return;
     }
 
-    // 写入表示嵌入向量维度的值(768)到文件开头8字节
+    // 写入表示嵌入向量维度的值(768)到文件开头8字节处
     uint64_t dimension = 768;
     ofs.write(reinterpret_cast<char*>(&dimension), sizeof(uint64_t));
 
@@ -726,7 +726,7 @@ void KVStore::load_hnsw_index_from_disk(const std::string &hnsw_data_root) {
             std::cout << "未找到键: " << key_of_embedding_vector << " 的嵌入向量" << std::endl;
             // 现场计算，并加入embedding
             std::string search_result = get(key_of_embedding_vector);
-            if (search_result == ""){std::cerr<<"embeddings中和严格查询都找不到"<<std::endl;}//错误
+            if (search_result == ""){std::cerr<<"embeddings中和严格查询都找不到"<<std::endl;exit(1);}//错误
             else {
                 vec = embedding(search_result)[0];
                 embeddings[key_of_embedding_vector] = vec;

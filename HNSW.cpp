@@ -10,12 +10,10 @@
 
 
 HNSWIndex::HNSWIndex(int M, int M_max, int efConstruction, Node* entry, int m_L) : M(M), M_max(M_max), efConstruction(efConstruction), entry(entry), m_L(m_L), gen(rd()) {
-    entry = nullptr;
     deleted_nodes.clear();
 }
 
 HNSWIndex::HNSWIndex():gen(rd()) {
-    //std::cout << "HNSWIndex: 创建新的HNSW索引" << std::endl;
     entry = nullptr;
     deleted_nodes.clear();
 }
@@ -68,26 +66,19 @@ int HNSWIndex::getRandomLevel() {
 // 接受一个嵌入向量和一个key，将其插入到HNSW图中
 void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
     if (!entry) {
-        //std::cout << "HNSWIndex: 首个节点插入，设为入口点" << std::endl;
         entry = new Node(getRandomLevel(), key, embedding);
         return;
     }
 
-
-    //std::cout << "HNSWIndex: 开始插入新节点，key=" << key << std::endl;
     int newLevel = getRandomLevel();
-
-    //std::cout << "HNSWIndex: 创建新节点，层级=" << newLevel << std::endl;
     Node *newNode = new Node(newLevel, key, embedding);
 
 
     // 从入口节点开始寻找
     Node *cur = entry;
-    //std::cout << "HNSWIndex: 从第 " << std::max(entry->level, newLevel) - 1 << " 层开始搜索最近节点" << std::endl;
     for (int i = entry->level - 1; i >= 0; i--) {
         // 自最顶层向下处理
         if (i >= newLevel) {
-            //std::cout << "HNSWIndex: 第 " << i << " 层 (高于新节点层级)，贪心搜索" << std::endl;
             // 在新节点的层数之上，贪心地更新cur，靠近新节点
             while (!cur->neighbors[i].empty()) {
 
@@ -102,14 +93,12 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
                 }
                 // 终止寻找
                 if (!best_neighbor) break;
-                //std::cout << "HNSWIndex: 移动到更近的节点，相似度=" << best_sim << std::endl;
                 cur = best_neighbor;// 更新cur，进入下一循环
             }
         }
         else {
-            //std::cout << "HNSWIndex: 第 " << i << " 层 (新节点层级范围内)，BFS搜索近邻" << std::endl;
-            // 在新节点的层数之下，利用类似BFS的方法在每层中寻找与q最近邻的efConstruction个点，再从中选出M个最近邻进行连接
 
+            // 在新节点的层数之下，利用类似BFS的方法在每层中寻找与q最近邻的efConstruction个点，再从中选出M个最近邻进行连接
 
             std::priority_queue<std::pair<float, Node*>> queue;
             std::unordered_map<Node*, bool> visited;
@@ -147,7 +136,6 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
             //std::cout << "HNSWIndex: 新节点在第 " << i << " 层连接了 " << connectedNodes << " 个邻居" << std::endl;
 
             // 连接邻居节点与新节点，并在必要时进行调整
-            int pruned = 0;
             for (auto it: newNode->neighbors[i]) {
                 it->neighbors[i].push_back(newNode);
 
@@ -173,24 +161,17 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
                     if (remove_neighbor != worst_neighbor->neighbors[i].end()) {
                         worst_neighbor->neighbors[i].erase(remove_neighbor);
                     }
-                    pruned++;
                 }
-            }
-            if(pruned > 0) {
-                //std::cout << "HNSWIndex: 共修剪了 " << pruned << " 个连接" << std::endl;
             }
         }
     }
 
     if (newNode->level > entry->level)entry = newNode;
-    //std::cout << "HNSWIndex: 节点插入完成，key=" << key << std::endl;
 }
 
 std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query, int k) {
-    //std::cout << "HNSWIndex: 开始KNN搜索，k=" << k << std::endl;
     
     if (!entry) {
-        //std::cout << "HNSWIndex: 索引为空，返回空结果" << std::endl;
         return std::vector<uint64_t>();
     }
 
@@ -364,11 +345,11 @@ void HNSWIndex::saveToDisk(const std::string &hnsw_data_root) {
                 // 写入邻接信息
                 neighbor_file.write((const char *)&neighborNum, sizeof(uint32_t));
                 for (auto it: cur->neighbors[l]) {
-                    if (deleted_nodes.contains(it->embedding)) continue;
-
-                    // 未被删除，则将其id写入文件
-                    uint32_t neighbor_id = map[it];
-                    neighbor_file.write((const char *)&(neighbor_id), sizeof(uint32_t));
+                    if (!deleted_nodes.contains(it->embedding)) {
+                        // 未被删除，则将其id写入文件
+                        uint32_t neighbor_id = map[it];
+                        neighbor_file.write((const char *)&(neighbor_id), sizeof(uint32_t));
+                    }
                 }
                 // 关闭文件
                 neighbor_file.close();
