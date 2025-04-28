@@ -1,4 +1,4 @@
-#include "kvstore.h"
+#include "../kvstore.h"
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -17,7 +17,8 @@ int main() {
   KVStore store("data/");
 
   // TODO: uncomment this line when you have implemented the function
-  // store.load_embedding_to_disk("embedding_data/");
+  // store.load_embedding_from_disk("embedding_data/");
+  store.load_embedding_from_disk();
 
   bool pass = true;
 
@@ -27,6 +28,7 @@ int main() {
   for (int i = 0; i < total; i++) {
     std::vector<std::pair<std::uint64_t, std::string>> result =
         store.search_knn(text[i], 1);
+
     if (result.size() != 1) {
       std::cout << "Error: result.size() != 1" << std::endl;
       pass = false;
