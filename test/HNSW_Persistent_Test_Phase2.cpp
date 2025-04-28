@@ -28,7 +28,7 @@ int main() {
   KVStore store("data/");
 
   // TODO: uncomment this line when you have implemented the function
-  // store.load_embedding_to_disk("embedding_data/");
+  store.load_hnsw_index_from_disk("hnsw_data/");
 
   int pass = 0;
   int total = 128;

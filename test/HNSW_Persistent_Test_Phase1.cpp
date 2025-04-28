@@ -23,7 +23,7 @@ int main() {
   }
 
   // TODO: uncomment this line when you have implemented the function
-  // store.save_hnsw_index_to_disk("hnsw_data/");
+  store.save_hnsw_index_to_disk("hnsw_data/");
 
   return 0;
 }

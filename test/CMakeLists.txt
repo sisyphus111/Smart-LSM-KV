@@ -118,7 +118,7 @@ target_link_libraries(HNSW_Persistent_Test_Phase1 PUBLIC embedding)
 
 # 向量持久化测试
 add_executable(HNSW_Persistent_Test_Phase2
-        Vector_Persistent_Test_Phase2.cpp
+        HNSW_Persistent_Test_Phase2.cpp
         ../kvstore.cc
         ../skiplist.cpp
         ../sstable.cpp

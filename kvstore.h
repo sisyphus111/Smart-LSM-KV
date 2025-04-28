@@ -1,7 +1,8 @@
 #pragma once
 
 #define key_embedding_store "data/embedding.bin"
-#define hnsw_path "data/hnsw_data_root/"
+#define hnsw_dir_name "hnsw_data"
+#define hnsw_dir "hnsw_data/"
 #define vec_dim 768
 
 #include "kvstore_api.h"
@@ -60,8 +61,8 @@ public:
     void load_embedding_from_disk(const std::string &data_root = key_embedding_store);
 
     // 持久化存储HNSW结构
-    void save_hnsw_index_to_disk(const std::string &hnsw_data_root = hnsw_path);
-    void load_hnsw_index_to_disk(const std::string &hnsw_data_root = hnsw_path);
+    void save_hnsw_index_to_disk(const std::string &hnsw_data_root = hnsw_dir);
+    void load_hnsw_index_from_disk(const std::string &hnsw_data_root = hnsw_dir);
 
     std::vector<std::pair<std::uint64_t, std::string>> search_knn(std::string query, int k);
     std::vector<std::pair<std::uint64_t, std::string>> search_knn_hnsw(std::string query, int k);

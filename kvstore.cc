@@ -34,7 +34,7 @@ struct cmpPoi {
 KVStore::KVStore(const std::string &dir) :
     KVStoreAPI(dir) // read from sstables
 {
-    hnswIndex = new HNSWIndex();
+    // hnswIndex = new HNSWIndex();
     for (totalLevel = 0;; ++totalLevel) {
         std::string path = dir + "/level-" + std::to_string(totalLevel) + "/";
         std::vector<std::string> files;
@@ -51,13 +51,19 @@ KVStore::KVStore(const std::string &dir) :
             TIME = std::max(TIME, cur.getTime()); // 更新时间戳
         }
     }
+
+    // 启动时加载嵌入向量和HNSW
+    load_embedding_from_disk();
+    load_hnsw_index_from_disk();
+
 }
 
 KVStore::~KVStore()
 {
 
-    // 退出时保存嵌入向量
+    // 退出时保存嵌入向量和HNSW索引
     save_embedding_to_disk();
+    save_hnsw_index_to_disk();
 
 
     sstable ss(s);
@@ -78,11 +84,14 @@ KVStore::~KVStore()
  */
 void KVStore::put(uint64_t key, const std::string &val) {
     if (val == DEL) {// 删除标记
-        hnswIndex->del(embedding(val)[0]);
+        if (get(key) != "")hnswIndex->del(embedding(get(key))[0]); // 若在删除之前已添加键值对，则对相应的嵌入向量进行删除，而非删除标记
         embeddings[key] = std::vector<float>(vec_dim, std::numeric_limits<float>::max());
     }
     else {
         embeddings[key] = embedding(val)[0];
+        // 若原来已有该键，则需要在HNSW索引中进行删除
+        std::string res = get(key);
+        if (res != "")hnswIndex->del(embedding(res)[0]);
         hnswIndex->insert(embeddings[key], key);
     }
 
@@ -184,6 +193,10 @@ void KVStore::reset() {
     // 清空嵌入向量的持久化存储和内存存储
     reset_key_embedding_store();
     embeddings.clear();
+    // 清空HNSW索引的持久化存储和内存存储
+    if (utils::dirExists(hnsw_dir)) utils::rmdir(hnsw_dir_name);
+    if (hnswIndex)delete hnswIndex;
+    hnswIndex = new HNSWIndex();
 
     s->reset(); // 先清空memtable
     std::vector<std::string> files;
@@ -199,8 +212,7 @@ void KVStore::reset() {
     }
     totalLevel = -1;
 
-    if (hnswIndex)delete hnswIndex;
-    hnswIndex = new HNSWIndex();
+
 
 }
 
@@ -657,10 +669,99 @@ void KVStore::save_hnsw_index_to_disk(const std::string &hnsw_data_root) {
 
 
 /**
- * @brief 从磁盘加载HNSW索引
- * @param hnsw_data_root HNSW保存的路径根目录
+* @brief 从磁盘加载HNSW索引
+* @param hnsw_data_root HNSW保存的路径根目录，带"/"
 */
-void KVStore::load_hnsw_index_to_disk(const std::string &hnsw_data_root) {
+void KVStore::load_hnsw_index_from_disk(const std::string &hnsw_data_root) {
     if (hnswIndex) delete hnswIndex;
-    hnswIndex = new HNSWIndex(hnsw_data_root);
+
+    // 先读取全局参数文件
+    std::string global_header_filename = hnsw_data_root + "global_header.bin";
+    std::ifstream global_header_file(global_header_filename, std::ios::binary);
+    if (!global_header_file.is_open()) {
+        // 打开失败
+        std::cerr << "无法打开文件进行读取: " << global_header_filename << std::endl;
+        return;
+    }
+    // 读取HNSW参数
+    uint32_t M, M_max, efConstruction, m_L, max_level, num_nodes, dim;
+    global_header_file.read((char *)&M, sizeof(uint32_t));
+    global_header_file.read((char *)&M_max, sizeof(uint32_t));
+    global_header_file.read((char *)&efConstruction, sizeof(uint32_t));
+    global_header_file.read((char *)&m_L, sizeof(uint32_t));
+    global_header_file.read((char *)&max_level, sizeof(uint32_t));
+    global_header_file.read((char *)&num_nodes, sizeof(uint32_t));
+    global_header_file.read((char *)&dim, sizeof(uint32_t));
+    // 读取完毕，关闭文件
+    global_header_file.close();
+
+
+    if (num_nodes == 0)return;// HNSW中没有结点
+
+    // 读取所有结点的数据，建立离散结点，并维护id至结点的映射
+    std::unordered_map<uint64_t, Node*> map;
+    for (uint64_t index = 0; index < num_nodes; index++) {
+        // 读取header.bin文件
+        std::string header_filename = hnsw_data_root + "nodes/" + std::to_string(index) + "/header.bin";
+        std::ifstream header_file(header_filename, std::ios::binary);
+        if (!header_file.is_open()) {
+            // 打开失败
+            std::cerr << "无法打开文件进行读取: " << header_filename << std::endl;
+            return;
+        }
+        // 读取结点的层数和key
+        uint32_t level;
+        uint64_t key_of_embedding_vector;
+        header_file.read((char *)&level, sizeof(uint32_t));
+        header_file.read((char *)&key_of_embedding_vector, sizeof(uint64_t));
+        // 关闭文件
+        header_file.close();
+        // 创建结点并建立映射
+        std::vector<float> vec;
+        // 尝试从embeddings中寻找嵌入向量
+        if (!embeddings.contains(key_of_embedding_vector)) {
+            std::cout << "未找到键: " << key_of_embedding_vector << " 的嵌入向量" << std::endl;
+            // 现场计算，并加入embedding
+            std::string search_result = get(key_of_embedding_vector);
+            if (search_result == ""){std::cerr<<"embeddings中和严格查询都找不到"<<std::endl;}//错误
+            else {
+                vec = embedding(search_result)[0];
+                embeddings[key_of_embedding_vector] = vec;
+            }
+        }
+        else vec = embeddings[key_of_embedding_vector];
+        Node *cur = new Node(level, key_of_embedding_vector, vec);
+        map[index] = cur;
+    }
+
+    // 0号结点即为该HNSWIndex的entry结点
+    // 设置HNSW参数
+    hnswIndex = new HNSWIndex(M, M_max, efConstruction, map[0], m_L);
+    // 剩下三个参数：max_level, num_nodes, dim
+
+    // 根据邻接信息连接所有邻居
+    for (uint64_t index = 0; index < num_nodes; index++) {
+        std::string node_edge_dir = hnsw_data_root + "nodes/" + std::to_string(index) + "/edges/";
+        // 分层进行连接
+        for (uint32_t l = 0; l < map[index]->level; l++) {
+            // 读取邻接信息
+            std::string neighbor_filename = node_edge_dir + std::to_string(l) + ".bin";
+            std::ifstream neighbor_file(neighbor_filename, std::ios::binary);
+            if (!neighbor_file.is_open()) {
+                // 打开失败
+                std::cerr << "无法打开文件进行读取: " << neighbor_filename << std::endl;
+                return;
+            }
+            // 先读取该层邻居个数
+            uint32_t neighborNum;
+            neighbor_file.read((char *)&neighborNum, sizeof(uint32_t));
+            for (uint32_t i = 0; i < neighborNum; i++) {
+                // 读取邻居id
+                uint64_t neighbor_id;
+                neighbor_file.read((char *)&neighbor_id, sizeof(uint32_t));
+                // 将邻居连接到当前结点
+                map[index]->neighbors[l].push_back(map[neighbor_id]);
+            }
+        }
+    }
 }

@@ -5,6 +5,14 @@
 #include <stack>
 #include <queue>
 #include <iostream>
+#include <fstream>
+#include "utils.h"
+
+
+HNSWIndex::HNSWIndex(int M, int M_max, int efConstruction, Node* entry, int m_L) : M(M), M_max(M_max), efConstruction(efConstruction), entry(entry), m_L(m_L), gen(rd()) {
+    entry = nullptr;
+    deleted_nodes.clear();
+}
 
 HNSWIndex::HNSWIndex():gen(rd()) {
     //std::cout << "HNSWIndex: 创建新的HNSW索引" << std::endl;
@@ -94,7 +102,7 @@ int HNSWIndex::getRandomLevel() {
 void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
     if (!entry) {
         //std::cout << "HNSWIndex: 首个节点插入，设为入口点" << std::endl;
-        entry = new Node(m_L, key, embedding);
+        entry = new Node(getRandomLevel(), key, embedding);
         return;
     }
 
@@ -200,6 +208,12 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
         }
     }
 
+
+    // 若插入的结点比入口结点高，则将entry指向新节点
+    if (newLevel > entry->level) {
+        //std::cout << "HNSWIndex: 新节点高于入口节点，更新入口节点" << std::endl;
+        entry = newNode;
+    }
     //std::cout << "HNSWIndex: 节点插入完成，key=" << key << std::endl;
 }
 
@@ -278,28 +292,144 @@ void HNSWIndex::del(const std::vector<float>& vec) {
     deleted_nodes.insert(vec);
 }
 
-
-
-// 从磁盘加载HNSW索引
-HNSWIndex::HNSWIndex(const std::string &hnsw_data_root) {
-
-
-
-}
-
-
-
-
-// 保存HNSW索引到磁盘
+/**
+ * @brief 将HNSW索引由内存存入指定目录
+ * @param hnsw_data_root 存放HNSW持久化数据的根目录（最后需要带上‘/’）
+*/
 void HNSWIndex::saveToDisk(const std::string &hnsw_data_root) {
+    // 待存入global_header的参数
+    uint32_t M = this->M;
+    uint32_t M_max = this->M_max;
+    uint32_t efConstruction = this->efConstruction;
+    uint32_t m_L = this->m_L;
+    uint32_t max_level; // 全图最高层级
+    uint32_t num_nodes;
+    uint32_t dim = 768; // 嵌入向量的维度
+
+    int nodeId = 0; // 保存结点的全局id
+    // 检查结点数据文件夹
+    std::string node_data_root = hnsw_data_root + "nodes";
+    if ( utils::dirExists(node_data_root + "/") ) utils::rmdir(node_data_root.data());
+    utils::mkdir((node_data_root + "/").data());
 
 
+    if (entry) {
+        max_level = entry->level;
+
+        // 从entry结点开始遍历，写入各个结点的数据，并维护结点至id的映射
+        std::unordered_map<Node*, uint64_t> map;
+
+        // 从入口结点开始，在每层进行DFS遍历，建立所有结点与id的映射
+        for (int i = 0; i < entry->level; i++) {
+
+            std::queue<Node*> q;
+            q.push(entry);
+
+            while (!q.empty()) {
+                Node *current = q.front();
+                q.pop();
+                if (map.find(current) == map.end() && !deleted_nodes.contains(current->embedding)) {// 还未访问到，且未被删除
+                    // 为结点分配id
+                    map[current] = nodeId++;
+                }
+                // 将该层的未被访问邻居入队
+                for (auto it: current->neighbors[i]) {
+                    if (map.find(it) == map.end()) {
+                        q.push(it);
+                    }
+                }
+            }
+        }
+        // 此时nodeId即为结点的总数
+        num_nodes = map.size();
+        // HNSW中所有节点均已分配id，开始写入数据
+        for (auto it: map) {
+            // 该结点的指针和id
+            uint64_t id = it.second;
+            Node *cur = it.first;
+            std::string node_dir = node_data_root + "/" + std::to_string(id);
+            // 检查该id对应的目录
+            if (utils::dirExists(node_dir + "/")) utils::rmdir(node_dir.data());
+            utils::mkdir((node_dir + "/").data());
+
+            // 写入参数文件header.bin
+            std::string header_filename = node_dir + "/" + "header.bin";
+            std::ofstream header_file(header_filename, std::ios::binary | std::ios::out | std::ios::trunc);
+            if (!header_file.is_open()) {
+                // 打开失败
+                std::cerr << "无法打开文件进行写入: " << header_filename << std::endl;
+                return;
+            }
+            header_file.write((const char *)&(cur->level), sizeof(uint32_t));
+            header_file.write((const char *)&(cur->key), sizeof(uint64_t));
+            //关闭文件
+            header_file.close();
 
 
+            // 检查邻接信息目录
+            std::string neighbor_dir = node_dir + "/edges";
+            if (utils::dirExists(neighbor_dir + "/")) utils::rmdir(neighbor_dir.data());
+            utils::mkdir((neighbor_dir + "/").data());
+
+            // 按层数依次写入文件
+            for (int l = 0; l < cur->level; l++) {
+                std::string neighbor_filename = neighbor_dir + "/" + std::to_string(l) + ".bin";
+                std::ofstream neighbor_file(neighbor_filename, std::ios::binary | std::ios::out | std::ios::trunc);
+                if (!neighbor_file.is_open()) {
+                    // 打开失败
+                    std::cerr << "无法打开文件进行写入: " << neighbor_filename << std::endl;
+                    return;
+                }
+
+                uint32_t neighborNum = cur->neighbors[l].size();
+                // 减去被删除的邻居
+                for (auto it: cur->neighbors[l]) {
+                    if (deleted_nodes.contains(it->embedding)) {
+                        neighborNum--;
+                    }
+                }
 
 
+                // 写入邻接信息
+                neighbor_file.write((const char *)&neighborNum, sizeof(uint32_t));
+                for (auto it: cur->neighbors[l]) {
+                    if (deleted_nodes.contains(it->embedding)) continue;
 
+                    // 未被删除，则将其id写入文件
+                    uint64_t neighbor_id = map[it];
+                    neighbor_file.write((const char *)&(neighbor_id), sizeof(uint32_t));
+                }
+                // 关闭文件
+                neighbor_file.close();
+            }
+        }
+    }
+    else {
+        // hnsw结构无结点
+        max_level = 0;
+        num_nodes = 0;
+    }
 
+    // 最后存放全局参数文件
+    std::string global_header_filename = hnsw_data_root + "global_header.bin";
+    // 二进制覆盖写模式打开global_header文件
+    std::ofstream global_header_file(global_header_filename, std::ios::binary | std::ios::out | std::ios::trunc);
+    if (!global_header_file.is_open()) {
+        // 打开失败
+        std::cerr << "无法打开文件进行写入: " << global_header_filename << std::endl;
+        return;
+    }
+    // 向global-header文件中写入HNSW参数
+    global_header_file.write((const char *)(&M), sizeof(uint32_t));
+    global_header_file.write((const char *)(&M_max), sizeof(uint32_t));
+    global_header_file.write((const char *)(&efConstruction), sizeof(uint32_t));
+    global_header_file.write((const char *)(&m_L), sizeof(uint32_t));
+    global_header_file.write((const char *)(&max_level), sizeof(uint32_t));
+    global_header_file.write((const char *)(&num_nodes), sizeof(uint32_t));
+    global_header_file.write((const char *)(&dim), sizeof(uint32_t));
 
-
+    // 关闭文件
+    global_header_file.close();
 }
+
+

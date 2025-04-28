@@ -18,13 +18,12 @@ struct Node {
 
     int m_L = max_L; // 节点的最高层数
 
-    Node(int level, uint64_t key, const std::vector<float>& embedding): level(level), key(key), embedding(embedding) {
+    Node(int level, uint64_t key, const std::vector<float>& embedding, uint64_t m_L = max_L): level(level), key(key), embedding(embedding) {
         neighbors.resize(m_L);
     }
 };
 
 
-// 注：修改功能未实现，不知道怎么实现
 class HNSWIndex {
 public:
 
@@ -34,7 +33,7 @@ public:
     void del(const std::vector<float>& vec); // 删除某个嵌入向量
 
     HNSWIndex();
-    HNSWIndex(const std::string &hnsw_data_root); // 从磁盘加载HNSW索引
+    HNSWIndex(int M, int M_max, int efConstruction, Node* entry, int m_L);
 
     void saveToDisk(const std::string &hnsw_data_root); // 保存HNSW索引到磁盘
 

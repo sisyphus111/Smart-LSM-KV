@@ -20,7 +20,7 @@
 namespace utils {
 /**
  * Check whether directory exists
- * @param path directory to be checked.
+ * @param path directory to be checked.最后需要有'/'
  * @return ture if directory exists, false otherwise.
  */
 static inline bool dirExists(std::string path) {
@@ -93,7 +93,7 @@ static inline int _mkdir(const char *path) {
 
 /**
  * Create directory recursively
- * @param path directory to be created.
+ * @param path directory to be created.最后需要有'/'
  * @return 0 if directory is created successfully, -1 otherwise.
  */
 static inline int mkdir(const char *path) {
@@ -113,7 +113,7 @@ static inline int mkdir(const char *path) {
 
 /**
  * Delete a empty directory
- * @param path directory to be deleted.
+ * @param path directory to be deleted.最后不需要有'/'
  * @return 0 if delete successfully, -1 otherwise.
  */
 static inline int rmdir(const char *path) {

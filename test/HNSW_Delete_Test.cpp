@@ -58,6 +58,7 @@ int main() {
     }
   }
 
-  std::cout << "Test failed" << std::endl;
+  if (!pass)std::cout << "Test failed" << std::endl;
+  else std::cout << "Test passed" << std::endl;
   return 0;
 }

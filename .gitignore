@@ -3,6 +3,7 @@
 /cmake-build-debug-wsl/
 /cmake-build-debug-wsl-cuda/
 /data/
+/hnsw_data/
 /CMakeFiles/
 /CMakeCache.txt
 /cmake_install.cmake
