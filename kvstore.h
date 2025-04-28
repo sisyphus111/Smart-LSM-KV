@@ -1,9 +1,9 @@
 #pragma once
 
-#define key_embedding_store "data/embedding.bin"
-#define hnsw_dir_name "hnsw_data"
+#define key_embedding_store "data/embedding.bin" // 嵌入向量的默认持久化存储文件
+#define hnsw_dir_name "hnsw_data" // HNSW索引的默认持久化存储目录
 #define hnsw_dir "hnsw_data/"
-#define vec_dim 768
+#define vec_dim 768 // 嵌入向量维数
 
 #include "kvstore_api.h"
 #include "skiplist.h"

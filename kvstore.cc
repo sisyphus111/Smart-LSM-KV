@@ -721,12 +721,17 @@ void KVStore::load_hnsw_index_from_disk(const std::string &hnsw_data_root) {
         header_file.close();
         // 创建结点并建立映射
         std::vector<float> vec;
-        // 尝试从embeddings中寻找嵌入向量
+
+        // 先尝试从embeddings中寻找嵌入向量
         if (!embeddings.contains(key_of_embedding_vector)) {
             std::cout << "未找到键: " << key_of_embedding_vector << " 的嵌入向量" << std::endl;
             // 现场计算，并加入embedding
             std::string search_result = get(key_of_embedding_vector);
-            if (search_result == ""){std::cerr<<"embeddings中和严格查询都找不到"<<std::endl;exit(1);}//错误
+            if (search_result == "") {
+                // 理论上不会执行到这一步
+                std::cerr<<"embeddings中和严格查询都找不到"<<std::endl;
+                exit(1);
+            }
             else {
                 vec = embedding(search_result)[0];
                 embeddings[key_of_embedding_vector] = vec;
