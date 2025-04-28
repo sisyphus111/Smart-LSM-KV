@@ -31,7 +31,7 @@ public:
     void insert(const std::vector<float>& embedding, uint64_t key); // 插入
     std::vector<uint64_t> search_knn_hnsw(const std::vector<float>& query, int k); // 搜索k个最近邻，按照相似度降序返回key的向量
 
-    void del(uint64_t key); // 删除
+    void del(const std::vector<float>& vec); // 删除某个嵌入向量
 
     HNSWIndex();
     HNSWIndex(const std::string &hnsw_data_root); // 从磁盘加载HNSW索引
@@ -52,7 +52,7 @@ private:
     double grow = 0.2; // 节点的增长率
 
 
-    std::set<uint64_t> deleted_nodes;// 已删除的结点集合
+    std::set<std::vector<float>> deleted_nodes;// 已删除的向量集合
 
 
     void simulated_annealing_select(std::vector<std::pair<float, Node*>>& scored_candidates, Node* center, int current_level, float temperature);// 模拟退火选择邻居
