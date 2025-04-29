@@ -83,16 +83,28 @@ KVStore::~KVStore()
  * No return values for simplicity.
  */
 void KVStore::put(uint64_t key, const std::string &val) {
-    if (val == DEL) {// 删除标记
-        if (get(key) != "")hnswIndex->del(embedding(get(key))[0]); // 若在删除之前已添加键值对，则对相应的嵌入向量进行删除，而非删除标记
+    if (val == DEL && get(key) != "") {
+        // 删除标记，且当前key在键值存储系统中存在，才在HNSW索引和embeddings中删除
+        hnswIndex->del(embedding(get(key))[0]); // 若在删除之前已添加键值对，则对相应的嵌入向量进行删除，而非删除标记
         embeddings[key] = std::vector<float>(vec_dim, std::numeric_limits<float>::max());
     }
-    else {
-        embeddings[key] = embedding(val)[0];
-        // 若原来已有该键，则需要在HNSW索引中进行删除
-        std::string res = get(key);
-        if (res != "")hnswIndex->del(embedding(res)[0]);
-        hnswIndex->insert(embeddings[key], key);
+    else if (val != DEL){ // 非删除标记，需要对新插入和修改情况分别处理
+        // embeddings：只需更新向量即可
+        std::vector<float> vec = embedding(val)[0];
+        embeddings[key] = vec;
+
+        // HNSW索引需分别处理
+        std::string res = get(key); // 查找：原来是否有该键
+        if (res != "" && !hnswIndex->isInDeletedNodes(vec)) {// 若原来已有该键，且HNSW中未删除该键，则进行替换
+            hnswIndex->del(embedding(res)[0]); // 删除原结点
+            hnswIndex->insert(vec, key); // 插入新结点
+        }
+        else if (res != "" && hnswIndex->isInDeletedNodes(vec)) {// 若原来已有该键，且HNSW中已删除该键，则恢复
+            hnswIndex->restoreDeletedNode(vec);
+        }
+        else if (res == "") {// 若原来没有该键
+            hnswIndex->insert(vec, key); // 直接插入
+        }
     }
 
     uint32_t nxtsize = s->getBytes();

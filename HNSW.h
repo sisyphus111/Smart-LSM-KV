@@ -37,6 +37,9 @@ public:
 
     void saveToDisk(const std::string &hnsw_data_root); // 保存HNSW索引到磁盘
 
+    bool isInDeletedNodes(const std::vector<float>& query); // 判断某向量是否在被删集合中
+    void restoreDeletedNode(const std::vector<float>& query); // 恢复被删的向量
+
     ~HNSWIndex();
 private:
     std::random_device rd;

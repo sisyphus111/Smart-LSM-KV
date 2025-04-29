@@ -18,6 +18,14 @@ HNSWIndex::HNSWIndex():gen(rd()) {
     deleted_nodes.clear();
 }
 
+bool HNSWIndex::isInDeletedNodes(const std::vector<float>& query) {
+    return deleted_nodes.contains(query);
+}
+
+void HNSWIndex::restoreDeletedNode(const std::vector<float>& query) {
+    if (deleted_nodes.contains(query)) deleted_nodes.erase(query);
+}
+
 HNSWIndex::~HNSWIndex() {
     //std::cout << "HNSWIndex: 开始销毁HNSW索引" << std::endl;
 
@@ -47,7 +55,6 @@ HNSWIndex::~HNSWIndex() {
         delete current;
         deletedNodes++;
     }
-    //std::cout << "HNSWIndex: 共删除了 " << deletedNodes << " 个节点" << std::endl;
 }
 
 
