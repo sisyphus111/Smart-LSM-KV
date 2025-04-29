@@ -93,7 +93,7 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
                 Node* best_neighbor = nullptr;
                 for (auto it: cur->neighbors[i]) {
                     float sim = common_embd_similarity_cos(it->embedding.data(), embedding.data(), it->embedding.size());
-                    if (sim > best_sim) {
+                    if (sim > best_sim && !deleted_nodes.contains(it->embedding)) { // 路径不能经过被删除的结点
                         best_sim = sim;
                         best_neighbor = it;
                     }
@@ -124,13 +124,12 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
                 pq.push(std::make_pair(common_embd_similarity_cos(current->embedding.data(), embedding.data(), current->embedding.size()), current));
                 // 将其邻居入队
                 for (auto it: current->neighbors[i]) {
-                    if (!visited[it]) {
+                    if (!visited[it] && !deleted_nodes.contains(it->embedding)) { // 路径不能经过被删除的结点
                         queue.push(std::make_pair(common_embd_similarity_cos(it->embedding.data(), embedding.data(), it->embedding.size()), it));
                     }
                 }
             }
 
-            //std::cout << "HNSWIndex: 找到 " << pq.size() << " 个候选近邻节点" << std::endl;
             // 到此处，pq中存放了离待插入节点较近的efConstruciton个节点
             // 取出M个最相似的节点,与新节点建立连接
             int connectedNodes = 0;
@@ -140,7 +139,6 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
 
                 connectedNodes++;
             }
-            //std::cout << "HNSWIndex: 新节点在第 " << i << " 层连接了 " << connectedNodes << " 个邻居" << std::endl;
 
             // 连接邻居节点与新节点，并在必要时进行调整
             for (auto it: newNode->neighbors[i]) {
@@ -185,7 +183,6 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
     // 从entry向下寻找，无法靠近query则进入下一层
     int curLevel = entry->level - 1;
     Node *cur = entry;
-    //std::cout << "HNSWIndex: 从第 " << curLevel << " 层开始搜索" << std::endl;
     
     while (curLevel >= 0 && !cur->neighbors[curLevel].empty()) {
         // 找到邻居中最相似的节点
@@ -193,24 +190,20 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
         Node *best_neighbor = nullptr;
         for (auto it: cur->neighbors[curLevel]) {
             float sim = common_embd_similarity_cos(it->embedding.data(), query.data(), it->embedding.size());
-            if (sim > best_sim) {
+            if (sim > best_sim && !deleted_nodes.contains(it->embedding)) { // 路径不能经过被删除的结点
                 best_sim = sim;
                 best_neighbor = it;
             }
         }
 
         if (best_neighbor == nullptr) {
-            //std::cout << "HNSWIndex: 第 " << curLevel << " 层没有更近的节点，进入下一层" << std::endl;
             curLevel--;
         } else {
-            //std::cout << "HNSWIndex: 移动到更相似的节点，相似度=" << best_sim << std::endl;
             cur = best_neighbor;
         }
     }
 
-    //std::cout << "HNSWIndex: 在底层开始KNN搜索" << std::endl;
     // 此时cur即为最接近query的节点
-
     // 在最底层进行knn搜索
     std::priority_queue<std::pair<float, Node*>> pq;// 大顶堆
 
@@ -225,13 +218,12 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
         // 计算当前节点与query的相似度
         float sim = common_embd_similarity_cos(current->embedding.data(), query.data(), current->embedding.size());
         pq.push(std::make_pair(sim, current));
-        // 将其邻居入队
+        // 将其未被删除的邻居入队
         for (auto it: current->neighbors[0]) {
-            if (!visited[it])queue.push(std::make_pair(common_embd_similarity_cos(it->embedding.data(), query.data(), query.size()),it));
+            if (!visited[it] && !deleted_nodes.contains(it->embedding))queue.push(std::make_pair(common_embd_similarity_cos(it->embedding.data(), query.data(), query.size()),it));
         }
     }
-    
-    //std::cout << "HNSWIndex: 共找到 " << pq.size() << " 个候选近邻节点" << std::endl;
+
 
     // 从优先级队列中取前k项不在deleted_node中的结点，作为最终输出
     std::vector<uint64_t> result;
@@ -240,7 +232,6 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
         pq.pop();
     }
 
-    //std::cout << "HNSWIndex: 返回 " << result.size() << " 个最近邻结果" << std::endl;
     return result;
 }
 
