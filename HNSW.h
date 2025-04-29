@@ -7,7 +7,6 @@
 
 #define max_L 6
 
-
 struct Node {
     uint64_t key; // key
     std::vector<float> embedding; // 嵌入向量
@@ -30,15 +29,15 @@ public:
     void insert(const std::vector<float>& embedding, uint64_t key); // 插入
     std::vector<uint64_t> search_knn_hnsw(const std::vector<float>& query, int k); // 搜索k个最近邻，按照相似度降序返回key的向量
 
-    void del(const std::vector<float>& vec); // 删除某个嵌入向量
+    void del(const std::vector<float>& vec); // 删除某个嵌入向量，使用lazy delete
+
+    bool isInDeletedNodes(const std::vector<float>& query);
+    void restoreDeletedNode(const std::vector<float>& query);
 
     HNSWIndex();
     HNSWIndex(int M, int M_max, int efConstruction, Node* entry, int m_L);
 
     void saveToDisk(const std::string &hnsw_data_root); // 保存HNSW索引到磁盘
-
-    bool isInDeletedNodes(const std::vector<float>& query); // 判断某向量是否在被删集合中
-    void restoreDeletedNode(const std::vector<float>& query); // 恢复被删的向量
 
     ~HNSWIndex();
 private:

@@ -18,13 +18,6 @@ HNSWIndex::HNSWIndex():gen(rd()) {
     deleted_nodes.clear();
 }
 
-bool HNSWIndex::isInDeletedNodes(const std::vector<float>& query) {
-    return deleted_nodes.contains(query);
-}
-
-void HNSWIndex::restoreDeletedNode(const std::vector<float>& query) {
-    if (deleted_nodes.contains(query)) deleted_nodes.erase(query);
-}
 
 HNSWIndex::~HNSWIndex() {
     //std::cout << "HNSWIndex: 开始销毁HNSW索引" << std::endl;
@@ -93,7 +86,7 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
                 Node* best_neighbor = nullptr;
                 for (auto it: cur->neighbors[i]) {
                     float sim = common_embd_similarity_cos(it->embedding.data(), embedding.data(), it->embedding.size());
-                    if (sim > best_sim && !deleted_nodes.contains(it->embedding)) { // 路径不能经过被删除的结点
+                    if (sim > best_sim) { // 路径可以经过被删除的结点
                         best_sim = sim;
                         best_neighbor = it;
                     }
@@ -106,7 +99,6 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
         else {
 
             // 在新节点的层数之下，利用类似BFS的方法在每层中寻找与q最近邻的efConstruction个点，再从中选出M个最近邻进行连接
-
             std::priority_queue<std::pair<float, Node*>> queue;
             std::unordered_map<Node*, bool> visited;
             // 存放efConstruction个点的大顶堆
@@ -124,7 +116,7 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
                 pq.push(std::make_pair(common_embd_similarity_cos(current->embedding.data(), embedding.data(), current->embedding.size()), current));
                 // 将其邻居入队
                 for (auto it: current->neighbors[i]) {
-                    if (!visited[it] && !deleted_nodes.contains(it->embedding)) { // 路径不能经过被删除的结点
+                    if (!visited[it]) { // 路径可以经过被删除的结点
                         queue.push(std::make_pair(common_embd_similarity_cos(it->embedding.data(), embedding.data(), it->embedding.size()), it));
                     }
                 }
@@ -145,7 +137,6 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
                 it->neighbors[i].push_back(newNode);
 
                 if (it->neighbors[i].size() > M_max) {
-                    //std::cout << "HNSWIndex: 节点邻居数量超过上限，需要修剪" << std::endl;
                     // 删除最远的一个连接
                     float worst_sim = 1;
                     Node *worst_neighbor = nullptr;
@@ -174,6 +165,16 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
     if (newNode->level > entry->level)entry = newNode;
 }
 
+bool HNSWIndex::isInDeletedNodes(const std::vector<float>& query) {
+    return deleted_nodes.contains(query);
+}
+
+void HNSWIndex::restoreDeletedNode(const std::vector<float>& query) {
+    if (deleted_nodes.contains(query)) deleted_nodes.erase(query);
+}
+
+
+
 std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query, int k) {
     
     if (!entry) {
@@ -190,7 +191,7 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
         Node *best_neighbor = nullptr;
         for (auto it: cur->neighbors[curLevel]) {
             float sim = common_embd_similarity_cos(it->embedding.data(), query.data(), it->embedding.size());
-            if (sim > best_sim && !deleted_nodes.contains(it->embedding)) { // 路径不能经过被删除的结点
+            if (sim > best_sim) { // 路径可以经过被删除的结点
                 best_sim = sim;
                 best_neighbor = it;
             }
@@ -218,9 +219,9 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
         // 计算当前节点与query的相似度
         float sim = common_embd_similarity_cos(current->embedding.data(), query.data(), current->embedding.size());
         pq.push(std::make_pair(sim, current));
-        // 将其未被删除的邻居入队
+        // 将其邻居入队
         for (auto it: current->neighbors[0]) {
-            if (!visited[it] && !deleted_nodes.contains(it->embedding))queue.push(std::make_pair(common_embd_similarity_cos(it->embedding.data(), query.data(), query.size()),it));
+            if (!visited[it])queue.push(std::make_pair(common_embd_similarity_cos(it->embedding.data(), query.data(), query.size()),it));
         }
     }
 
@@ -245,6 +246,10 @@ void HNSWIndex::del(const std::vector<float>& vec) {
  * @param hnsw_data_root 存放HNSW持久化数据的根目录（最后需要带上‘/’）
 */
 void HNSWIndex::saveToDisk(const std::string &hnsw_data_root) {
+
+    // 维护被删的结点的key至embedding vector的映射
+    std::unordered_map<uint32_t, std::vector<float>> deleted_nodes_store;
+
     // 待存入global_header的参数
     uint32_t M = this->M;
     uint32_t M_max = this->M_max;
@@ -274,16 +279,20 @@ void HNSWIndex::saveToDisk(const std::string &hnsw_data_root) {
             Node *current = q.front();
             q.pop();
             
-            // 如果节点未被处理且未被删除，则分配ID
-            if (map.find(current) == map.end() && !deleted_nodes.contains(current->embedding)) {
+            // 如果节点未被处理则分配ID
+            if (map.find(current) == map.end()) {
                 map[current] = nodeId++;
-                
+
+                // 若该节点是被删的结点，则维护将其加入key至embedding vector的映射
+                if (deleted_nodes.contains(current->embedding)) {
+                    deleted_nodes_store[nodeId] = current->embedding;
+                }
+
                 // 处理该节点的所有层的邻居
                 for (int l = 0; l < current->level; l++) {
                     for (auto neighbor : current->neighbors[l]) {
-                        // 只将未处理且未删除的节点加入队列
-                        if (map.find(neighbor) == map.end() && 
-                            !deleted_nodes.contains(neighbor->embedding)) {
+                        // 只将未处理的节点加入队列
+                        if (map.find(neighbor) == map.end()) {
                             q.push(neighbor);
                         }
                     }
@@ -334,20 +343,12 @@ void HNSWIndex::saveToDisk(const std::string &hnsw_data_root) {
                 }
 
                 uint32_t neighborNum = cur->neighbors[l].size();
-                // 减去被删除的邻居
-                for (auto it: cur->neighbors[l]) {
-                    if (deleted_nodes.contains(it->embedding)) {
-                        neighborNum--;
-                    }
-                }
                 // 写入邻接信息
                 neighbor_file.write((const char *)&neighborNum, sizeof(uint32_t));
                 for (auto it: cur->neighbors[l]) {
-                    if (!deleted_nodes.contains(it->embedding)) {
-                        // 未被删除，则将其id写入文件
-                        uint32_t neighbor_id = map[it];
-                        neighbor_file.write((const char *)&(neighbor_id), sizeof(uint32_t));
-                    }
+                    // 将其id写入文件
+                    uint32_t neighbor_id = map[it];
+                    neighbor_file.write((const char *)&(neighbor_id), sizeof(uint32_t));
                 }
                 // 关闭文件
                 neighbor_file.close();
@@ -360,7 +361,8 @@ void HNSWIndex::saveToDisk(const std::string &hnsw_data_root) {
         num_nodes = 0;
     }
 
-    // 最后存放全局参数文件
+
+    // 存放全局参数文件
     std::string global_header_filename = hnsw_data_root + "global_header.bin";
     // 二进制覆盖写模式打开global_header文件
     std::ofstream global_header_file(global_header_filename, std::ios::binary | std::ios::out | std::ios::trunc);
@@ -380,6 +382,27 @@ void HNSWIndex::saveToDisk(const std::string &hnsw_data_root) {
 
     // 关闭文件
     global_header_file.close();
+
+
+    // 存放被删的结点们
+    std::string deleted_nodes_filename = hnsw_data_root + "deleted_nodes.bin";
+    std::ofstream deleted_nodes_file(deleted_nodes_filename, std::ios::binary | std::ios::out | std::ios::trunc);
+    if (!deleted_nodes_file.is_open()) {
+        // 打开失败
+        std::cerr << "无法打开文件进行写入: " << deleted_nodes_filename << std::endl;
+        return;
+    }
+    // 写入被删除的结点的个数（uint32_t类型），再写入id，再写入embedding vector
+    uint32_t deleted_nodes_num = deleted_nodes_store.size();
+    deleted_nodes_file.write((const char *)(&deleted_nodes_num), sizeof(uint32_t));
+
+    for (auto it: deleted_nodes_store) {
+        // 写入id
+        deleted_nodes_file.write((const char *)(&it.first), sizeof(uint32_t));
+        // 写入向量
+        deleted_nodes_file.write((const char *)(it.second.data()), dim * sizeof(float));
+    }
+
 }
 
 

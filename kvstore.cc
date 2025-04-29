@@ -784,4 +784,28 @@ void KVStore::load_hnsw_index_from_disk(const std::string &hnsw_data_root) {
             }
         }
     }
+
+    // 上述操作结束后，被删除的结点被赋予了错误的值，需要根据deleted_nodes.bin文件的内容恢复
+    std::string deleted_nodes_filename = hnsw_data_root + "deleted_nodes.bin";
+    std::ifstream deleted_nodes_file(deleted_nodes_filename, std::ios::binary);
+    if (!deleted_nodes_file.is_open()) {
+        // 打开失败
+        std::cerr << "无法打开文件进行读取: " << deleted_nodes_filename << std::endl;
+        return;
+    }
+    // 读取被删除结点的个数
+    uint32_t deleted_nodes_num;
+    deleted_nodes_file.read((char *)&deleted_nodes_num, sizeof(uint32_t));
+    for (uint32_t index = 0; index < deleted_nodes_num; index++) {
+        // 读取被删除结点的id
+        uint32_t deleted_node_id;
+        deleted_nodes_file.read((char *)&deleted_node_id, sizeof(uint32_t));
+        // 读取被删除结点的向量数据
+        std::vector<float> deleted_node_vec(vec_dim);
+        deleted_nodes_file.read((char *)deleted_node_vec.data(), vec_dim * sizeof(float));
+        // 将被删结点的向量设为读出的向量值
+        map[deleted_node_id]->embedding = deleted_node_vec;
+        // 将该向量值加入HNSW索引的删除集合
+        hnswIndex->del(deleted_node_vec);
+    }
 }
