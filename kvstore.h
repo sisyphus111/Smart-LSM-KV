@@ -57,6 +57,7 @@ public:
     std::string fetchString(std::string file, int startOffset, uint32_t len);
 
     // 持久化存储嵌入向量
+    std::vector<float> search_embedding(uint64_t key, const std::string &filename = key_embedding_store);
     void save_embedding_to_disk(const std::string &filename = key_embedding_store);
     void load_embedding_from_disk(const std::string &data_root = key_embedding_store);
 

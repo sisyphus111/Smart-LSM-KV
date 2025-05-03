@@ -137,3 +137,25 @@ target_compile_options(HNSW_Persistent_Test_Phase2 PRIVATE
 target_link_libraries(HNSW_Persistent_Test_Phase2 PUBLIC embedding)
 
 
+
+# my reinsert test
+add_executable(Reinsert_Test
+        Reinsert_Test.cpp
+        ../kvstore.cc
+        ../skiplist.cpp
+        ../sstable.cpp
+        ../bloom.cpp
+        ../sstablehead.cpp
+        ../utils.h
+        ../HNSW.h
+        ../HNSW.cpp
+)
+
+# 为测试设置调试编译选项
+target_compile_options(Reinsert_Test PRIVATE
+        -g -O0
+)
+
+target_link_libraries(Reinsert_Test PUBLIC embedding)
+
+

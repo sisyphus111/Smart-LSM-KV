@@ -52,8 +52,8 @@ KVStore::KVStore(const std::string &dir) :
         }
     }
 
-    // 启动时加载嵌入向量和HNSW
-    load_embedding_from_disk();
+    // 启动时加载HNSW
+    // load_embedding_from_disk();
     load_hnsw_index_from_disk();
 
 }
@@ -83,27 +83,44 @@ KVStore::~KVStore()
  * No return values for simplicity.
  */
 void KVStore::put(uint64_t key, const std::string &val) {
-    if (val == DEL && get(key) != "") {
-        // 删除标记，且当前key在键值存储系统中存在，才在HNSW索引和embeddings中删除
-        hnswIndex->del(embedding(get(key))[0]); // 若在删除之前已添加键值对，则对相应的嵌入向量进行删除，而非删除标记
+    // put操作的不同情况：
+    if (val == DEL) {
+        // 当前为删除操作
         embeddings[key] = std::vector<float>(vec_dim, std::numeric_limits<float>::max());
+        // hnswIndex需分类讨论：之前已添加键值对，则对相应的嵌入向量进行删除，而非删除标记；若原来没有该键值对，则不用操作
+        if (get(key) != "") hnswIndex->del(embedding(get(key))[0]);
     }
-    else if (val != DEL){ // 非删除标记，需要对新插入和修改情况分别处理
-        // embeddings：只需更新向量即可
-        std::vector<float> vec = embedding(val)[0];
-        embeddings[key] = vec;
-
-        // HNSW索引需分别处理
-        std::string res = get(key); // 查找：原来是否有该键
-        if (res != "" && !hnswIndex->isInDeletedNodes(vec)) {// 若原来已有该键，且HNSW中未删除该键，则进行替换
-            hnswIndex->del(embedding(res)[0]); // 删除原结点
-            hnswIndex->insert(vec, key); // 插入新结点
+    else {
+        // 当前为“添加”或“更新”操作
+        embeddings[key] = embedding(val)[0];
+        // hnswIndex需分类讨论：直接添加/更新/如加？
+        // 更新 —— 原键在LSM-Tree中存在，且在HNSW的deleted nodes中不存在值,但get(key)不等于val
+        // 如加 —— 原键在LSM-Tree中存在，且在HNSW的deleted nodes中不存在值,且get(key)等于val
+        // 同样的值插入不同键 —— 原键在LSM-Tree中存在，且在HNSW的deleted nodes中存在值
+        // 添加 —— 原键在LSM-Tree中不存在，且在HNSW的deleted nodes中不存在值
+        // 恢复 —— 原键在LSM-Tree中不存在，但在HNSW的deleted nodes中存在值
+        if (get(key) == "") { // 添加/恢复
+            if (hnswIndex->isInDeletedNodes(embedding(val)[0])) {
+                std::cout << "restore deleted value" << std::endl;
+                hnswIndex->restoreDeletedNode(embedding(val)[0]);
+            }
+            else {
+                // 直接添加
+                hnswIndex->insert(embedding(val)[0], key);
+            }
         }
-        else if (res != "" && hnswIndex->isInDeletedNodes(vec)) {// 若原来已有该键，且HNSW中已删除该键，则恢复
-            hnswIndex->restoreDeletedNode(vec);
-        }
-        else if (res == "") {// 若原来没有该键
-            hnswIndex->insert(vec, key); // 直接插入
+        // 更新/如加/相同键替换
+        else {
+            if (!hnswIndex->isInDeletedNodes(embedding(val)[0]) && get(key) != val) {
+                // 更新
+                hnswIndex->del(embedding(get(key))[0]); // 删除原结点
+                hnswIndex->insert(embedding(val)[0], key); // 插入新结点
+            }
+            // 如加
+            else if (hnswIndex->isInDeletedNodes(embedding(val)[0]) && get(key) == val) {
+                std::cout << "put exactly same value" << std::endl;
+                return;
+            }
         }
     }
 
@@ -116,6 +133,9 @@ void KVStore::put(uint64_t key, const std::string &val) {
     if (nxtsize + 10240 + 32 <= MAXSIZE)
         s->insert(key, val); // 小于等于（不超过） 2MB
     else {
+        // 持久化跳表时，把嵌入向量持久化
+        save_embedding_to_disk();
+
         sstable ss(s);
         s->reset();
         std::string url  = ss.getFilename();
@@ -566,7 +586,9 @@ std::string KVStore::fetchString(std::string file, int startOffset, uint32_t len
 std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::string query, int k){
     // 计算查询向量
     std::vector<float> queryVec = embedding(query)[0];
-    // 遍历embeddings，计算相似度
+
+    // 遍历所有嵌入向量（embeddings映射和磁盘文件），计算相似度
+    load_embedding_from_disk();
 
     //维护小顶堆
     auto cmp = [](const std::pair<float, uint64_t>& a, const std::pair<float, uint64_t>& b) {
@@ -636,6 +658,54 @@ void KVStore::save_embedding_to_disk(const std::string &filename) {
     embeddings.clear();
 }
 
+std::vector<float> KVStore::search_embedding(uint64_t key, const std::string &filename) {
+    if (embeddings.contains(key)) return embeddings[key];// 可能是删除标记，也可能是嵌入向量
+    else {
+        // 在文件中查找
+        std::ifstream infile(filename, std::ios::binary);
+        if (!infile) {
+            return {}; // 文件打开失败，返回空向量
+        }
+
+        // 获取文件大小
+        infile.seekg(0, std::ios::end);
+        std::streampos fileSize = infile.tellg();
+
+        // 每个key-vector对的大小
+        const size_t keySize = sizeof(uint64_t);
+        const size_t vectorSize = 768 * sizeof(float);
+        const size_t recordSize = keySize + vectorSize;
+
+        // 从文件末尾开始向前搜索
+        std::streampos pos = fileSize;
+        while (pos >= static_cast<std::streampos>(recordSize)) {
+            pos -= recordSize;
+            infile.seekg(pos, std::ios::beg);
+
+            // 读取key
+            uint64_t currentKey;
+            infile.read(reinterpret_cast<char*>(&currentKey), keySize);
+
+            if (infile.fail()) {
+                break; // 读取失败，退出循环
+            }
+
+            // 如果找到匹配的key
+            if (currentKey == key) {
+                // 读取对应的向量
+                std::vector<float> vector(768);
+                infile.read(reinterpret_cast<char*>(vector.data()), vectorSize);
+
+                if (!infile.fail()) {
+                    return vector; // 成功找到并返回向量
+                }
+                break; // 读取向量失败
+            }
+        }
+
+        return {}; // 未找到，返回空向量
+    }
+}
 
 /**
  * @brief 系统启动时，从磁盘加载嵌入向量，放置到embeddings中
@@ -685,8 +755,10 @@ void KVStore::save_hnsw_index_to_disk(const std::string &hnsw_data_root) {
 * @param hnsw_data_root HNSW保存的路径根目录，带"/"
 */
 void KVStore::load_hnsw_index_from_disk(const std::string &hnsw_data_root) {
-    if (hnswIndex) delete hnswIndex;
-
+    if (hnswIndex) {
+        delete hnswIndex;
+        hnswIndex = nullptr;
+    }
     // 先读取全局参数文件
     std::string global_header_filename = hnsw_data_root + "global_header.bin";
     std::ifstream global_header_file(global_header_filename, std::ios::binary);
@@ -735,21 +807,7 @@ void KVStore::load_hnsw_index_from_disk(const std::string &hnsw_data_root) {
         std::vector<float> vec;
 
         // 先尝试从embeddings中寻找嵌入向量
-        if (!embeddings.contains(key_of_embedding_vector)) {
-            std::cout << "未找到键: " << key_of_embedding_vector << " 的嵌入向量" << std::endl;
-            // 现场计算，并加入embedding
-            std::string search_result = get(key_of_embedding_vector);
-            if (search_result == "") {
-                // 理论上不会执行到这一步
-                std::cerr<<"embeddings中和严格查询都找不到"<<std::endl;
-                exit(1);
-            }
-            else {
-                vec = embedding(search_result)[0];
-                embeddings[key_of_embedding_vector] = vec;
-            }
-        }
-        else vec = embeddings[key_of_embedding_vector];
+        vec = search_embedding(key_of_embedding_vector); // 可能是某个嵌入向量，也可能是删除标记，也可能为空
         Node *cur = new Node(level, key_of_embedding_vector, vec);
         map[index] = cur;
     }

@@ -15,8 +15,8 @@ std::vector<std::string> load_text(std::string filename) {
 
 bool check_result(std::vector<std::pair<std::uint64_t, std::string>> result,
                   std::string text) {
-  for (int i = 0; i < result.size(); i++) {
-    if (result[i].second == text) {
+  for (auto it:result) {
+    if (it.second == text) {
       return true;
     }
   }
@@ -40,12 +40,12 @@ int main() {
   pass = 0;
   for(int i = phase[1]; i < phase[2]; ++i) {
     std::vector<std::pair<std::uint64_t, std::string>> result = store.search_knn_hnsw(text[i], 3);
-    for(int k = 0; k < 3; ++k) {
-      if(result[k].first == i) {
-        std::cout << "Delete Test Error: value[" << i << "] is not deleted" << std::endl;
-        std::cerr << "Test failed." << std::endl;
-        return 0;
-      }
+    for(auto it: result) {
+        if(it.first == i) {
+            std::cout << "Delete Test Error: value[" << i << "] is not deleted" << std::endl;
+            std::cerr << "Test failed." << std::endl;
+            return 0;
+        }
     }
     pass++;
   }

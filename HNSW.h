@@ -47,7 +47,7 @@ private:
 
     int M = 6; // 插入过程中，被插入节点需要与图中其他节点建立的连接数
     int M_max = 12; // 连接数的上限，若超过则需要删除部分连接
-    int efConstruction = 40; // 搜索过程中候选节点集合的数量
+    int efConstruction = 80; // 搜索过程中候选节点集合的数量
     int m_L = max_L; // 节点的最高层数
 
     double grow = 0.2; // 节点的增长率

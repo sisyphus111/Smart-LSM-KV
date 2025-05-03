@@ -226,12 +226,16 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
     }
 
 
+    int visited_deleted_num = 0; // 访问的被删除结点的数量
     // 从优先级队列中取前k项不在deleted_node中的结点，作为最终输出
     std::vector<uint64_t> result;
     while (!pq.empty() && result.size() < k) {
-        if ( !deleted_nodes.contains(pq.top().second->embedding) )result.push_back(pq.top().second->key); // 若该结点未被删除，则加入结果
+        if ( !deleted_nodes.contains(pq.top().second->embedding) ) result.push_back(pq.top().second->key); // 若该结点未被删除，则加入结果
+        else visited_deleted_num ++;
         pq.pop();
     }
+
+    std::cout << "eliminate deleted nodes: " << visited_deleted_num << std::endl;
 
     return result;
 }
@@ -281,12 +285,15 @@ void HNSWIndex::saveToDisk(const std::string &hnsw_data_root) {
             
             // 如果节点未被处理则分配ID
             if (map.find(current) == map.end()) {
-                map[current] = nodeId++;
+                map[current] = nodeId;
 
                 // 若该节点是被删的结点，则维护将其加入key至embedding vector的映射
                 if (deleted_nodes.contains(current->embedding)) {
                     deleted_nodes_store[nodeId] = current->embedding;
                 }
+
+                // 更新nodeId
+                nodeId++;
 
                 // 处理该节点的所有层的邻居
                 for (int l = 0; l < current->level; l++) {
