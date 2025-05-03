@@ -91,6 +91,7 @@ void LLMEmbedding::initParams() {
 }
 
 LLMEmbedding::LLMEmbedding(const std::string &modelPath) {
+  common_log_pause(common_log_main());
   if (_initialized) {
     throw std::runtime_error("LLMEmbedding already initialized");
   }

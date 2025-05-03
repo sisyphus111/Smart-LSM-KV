@@ -115,8 +115,6 @@ target_compile_options(HNSW_Persistent_Test_Phase1 PRIVATE
 
 target_link_libraries(HNSW_Persistent_Test_Phase1 PUBLIC embedding)
 
-
-# 向量持久化测试
 add_executable(HNSW_Persistent_Test_Phase2
         HNSW_Persistent_Test_Phase2.cpp
         ../kvstore.cc
@@ -157,5 +155,46 @@ target_compile_options(Reinsert_Test PRIVATE
 )
 
 target_link_libraries(Reinsert_Test PUBLIC embedding)
+
+
+# HNSW持久化测试
+add_executable(HNSW_Basic_Persistent_Test_Phase1
+        HNSW_Basic_Persistent_Test_Phase1.cpp
+        ../kvstore.cc
+        ../skiplist.cpp
+        ../sstable.cpp
+        ../bloom.cpp
+        ../sstablehead.cpp
+        ../utils.h
+        ../HNSW.h
+        ../HNSW.cpp
+)
+
+# 为测试设置调试编译选项
+target_compile_options(HNSW_Basic_Persistent_Test_Phase1 PRIVATE
+        -g -O0
+)
+
+target_link_libraries(HNSW_Basic_Persistent_Test_Phase1 PUBLIC embedding)
+
+
+add_executable(HNSW_Basic_Persistent_Test_Phase2
+        HNSW_Basic_Persistent_Test_Phase2.cpp
+        ../kvstore.cc
+        ../skiplist.cpp
+        ../sstable.cpp
+        ../bloom.cpp
+        ../sstablehead.cpp
+        ../utils.h
+        ../HNSW.h
+        ../HNSW.cpp
+)
+
+# 为测试设置调试编译选项
+target_compile_options(HNSW_Basic_Persistent_Test_Phase2 PRIVATE
+        -g -O0
+)
+
+target_link_libraries(HNSW_Basic_Persistent_Test_Phase2 PUBLIC embedding)
 
 
