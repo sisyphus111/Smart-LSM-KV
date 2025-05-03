@@ -75,7 +75,7 @@ int main() {
   for(int i = phase[0]; i < phase[1]; ++i) {
     int j = i + phase[3];
     std::vector<std::pair<std::uint64_t, std::string>> result_i = store.search_knn_hnsw(text[i], 3);
-    if(result_i[0].first == i) {
+    if (result_i[0].first == i) {
       std::cout << "Replace Test Error: value[" << i << "] is not deleted" << std::endl;
       continue;
     }

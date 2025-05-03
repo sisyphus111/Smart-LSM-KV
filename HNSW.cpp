@@ -165,12 +165,12 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
     if (newNode->level > entry->level)entry = newNode;
 }
 
-bool HNSWIndex::isInDeletedNodes(const std::vector<float>& query) {
-    return deleted_nodes.contains(query);
+bool HNSWIndex::isInDeletedNodes(uint64_t key, const std::vector<float>& query) {
+    return deleted_nodes.contains(std::make_pair(key, query));
 }
 
-void HNSWIndex::restoreDeletedNode(const std::vector<float>& query) {
-    if (deleted_nodes.contains(query)) deleted_nodes.erase(query);
+void HNSWIndex::restoreDeletedNode(uint64_t key, const std::vector<float>& query) {
+    if (deleted_nodes.contains(std::make_pair(key, query))) deleted_nodes.erase(std::make_pair(key, query));
 }
 
 
@@ -230,7 +230,7 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
     // 从优先级队列中取前k项不在deleted_node中的结点，作为最终输出
     std::vector<uint64_t> result;
     while (!pq.empty() && result.size() < k) {
-        if ( !deleted_nodes.contains(pq.top().second->embedding) ) result.push_back(pq.top().second->key); // 若该结点未被删除，则加入结果
+        if ( !isInDeletedNodes(pq.top().second->key, pq.top().second->embedding) ) result.push_back(pq.top().second->key); // 若该结点未被删除，则加入结果
         else visited_deleted_num ++;
         pq.pop();
     }
@@ -241,8 +241,8 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
 }
 
 
-void HNSWIndex::del(const std::vector<float>& vec) {
-    deleted_nodes.insert(vec);
+void HNSWIndex::del(uint64_t key, const std::vector<float>& vec) {
+    deleted_nodes.insert(std::make_pair(key, vec));
 }
 
 /**
@@ -288,7 +288,7 @@ void HNSWIndex::saveToDisk(const std::string &hnsw_data_root) {
                 map[current] = nodeId;
 
                 // 若该节点是被删的结点，则维护将其加入key至embedding vector的映射
-                if (deleted_nodes.contains(current->embedding)) {
+                if (isInDeletedNodes(current->key, current->embedding)) {
                     deleted_nodes_store[nodeId] = current->embedding;
                 }
 

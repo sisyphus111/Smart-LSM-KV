@@ -29,10 +29,10 @@ public:
     void insert(const std::vector<float>& embedding, uint64_t key); // 插入
     std::vector<uint64_t> search_knn_hnsw(const std::vector<float>& query, int k); // 搜索k个最近邻，按照相似度降序返回key的向量
 
-    void del(const std::vector<float>& vec); // 删除某个嵌入向量，使用lazy delete
+    void del(uint64_t key, const std::vector<float>& vec); // 删除某个键-嵌入向量对，使用lazy delete
 
-    bool isInDeletedNodes(const std::vector<float>& query);
-    void restoreDeletedNode(const std::vector<float>& query);
+    bool isInDeletedNodes(uint64_t key, const std::vector<float>& query);
+    void restoreDeletedNode(uint64_t key, const std::vector<float>& query);
 
     HNSWIndex();
     HNSWIndex(int M, int M_max, int efConstruction, Node* entry, int m_L);
@@ -53,7 +53,7 @@ private:
     double grow = 0.2; // 节点的增长率
 
 
-    std::set<std::vector<float>> deleted_nodes;// 已删除的向量集合
+    std::set<std::pair<uint64_t, std::vector<float>>> deleted_nodes;// 已删除的键-向量对集合
 
     Node *entry; // 查找、插入的入口节点
     int getRandomLevel(); // 获取随机层数

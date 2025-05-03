@@ -87,39 +87,43 @@ void KVStore::put(uint64_t key, const std::string &val) {
     if (val == DEL) {
         // 当前为删除操作
         embeddings[key] = std::vector<float>(vec_dim, std::numeric_limits<float>::max());
-        // hnswIndex需分类讨论：之前已添加键值对，则对相应的嵌入向量进行删除，而非删除标记；若原来没有该键值对，则不用操作
-        if (get(key) != "") hnswIndex->del(embedding(get(key))[0]);
+        // hnswIndex需分类讨论：之前已添加键值对，则对相应的键-嵌入向量进行删除；若原来没有该键，则不用操作
+        if (get(key) != "") hnswIndex->del(key, embedding(get(key))[0]);
     }
     else {
-        // 当前为“添加”或“更新”操作
+        // 当前为“添加”或“更新”操作，向量只需更新即可
         embeddings[key] = embedding(val)[0];
-        // hnswIndex需分类讨论：直接添加/更新/如加？
-        // 更新 —— 原键在LSM-Tree中存在，且在HNSW的deleted nodes中不存在值,但get(key)不等于val
-        // 如加 —— 原键在LSM-Tree中存在，且在HNSW的deleted nodes中不存在值,且get(key)等于val
-        // 同样的值插入不同键 —— 原键在LSM-Tree中存在，且在HNSW的deleted nodes中存在值
-        // 添加 —— 原键在LSM-Tree中不存在，且在HNSW的deleted nodes中不存在值
-        // 恢复 —— 原键在LSM-Tree中不存在，但在HNSW的deleted nodes中存在值
-        if (get(key) == "") { // 添加/恢复
-            if (hnswIndex->isInDeletedNodes(embedding(val)[0])) {
-                std::cout << "restore deleted value" << std::endl;
-                hnswIndex->restoreDeletedNode(embedding(val)[0]);
+        // hnswIndex需分类讨论：更新值/如加/添加/恢复
+        // 更新值：原键在LSM-Tree中存在，key-get(key)和key-val都不存在于deleted nodes中，且get(key)不等于val
+        // 更新后恢复：原键在LSM-Tree中存在，key-get(key)必不存在于deleted nodes，key-val存在于deleted nodes中
+        // 如加：原键在LSM-Tree中存在，且key-val在deleted nodes中不存在，且get(key)等于val
+        // 添加：原键在LSM-Tree中不存在，且key-val在deleted nodes中不存在
+        // 删除后恢复：原键在LSM-Tree中不存在，但key-val在deleted nodes中存在
+        if (get(key) != "") {
+            // 更新值/更新后恢复/如加
+            if (get(key) != val && !hnswIndex->isInDeletedNodes(key, embedding(val)[0])) {
+                // 更新值
+                hnswIndex->del(key, embedding(get(key))[0]); // 删除原值
+                hnswIndex->insert(embedding(val)[0], key); // 插入新值
             }
-            else {
-                // 直接添加
-                hnswIndex->insert(embedding(val)[0], key);
+            else if (hnswIndex->isInDeletedNodes(key, embedding(val)[0])) {
+                // 更新后恢复
+                hnswIndex->restoreDeletedNode(key, embedding(val)[0]); // 恢复更新前的值
+                hnswIndex->del(key, embedding(get(key))[0]); // 删除更新后的值
+            }
+            else if (get(key) == val && !hnswIndex->isInDeletedNodes(key, embedding(val)[0])) {
+                // 如加
             }
         }
-        // 更新/如加/相同键替换
         else {
-            if (!hnswIndex->isInDeletedNodes(embedding(val)[0]) && get(key) != val) {
-                // 更新
-                hnswIndex->del(embedding(get(key))[0]); // 删除原结点
-                hnswIndex->insert(embedding(val)[0], key); // 插入新结点
+            // 添加/删除后恢复
+            if (get(key) == "" && !hnswIndex->isInDeletedNodes(key, embedding(val)[0])) {
+                // 添加
+                hnswIndex->insert(embedding(val)[0], key);
             }
-            // 如加
-            else if (hnswIndex->isInDeletedNodes(embedding(val)[0]) && get(key) == val) {
-                std::cout << "put exactly same value" << std::endl;
-                return;
+            else if (get(key) == "" && hnswIndex->isInDeletedNodes(key, embedding(val)[0])) {
+                // 删除后恢复
+                hnswIndex->restoreDeletedNode(key, embedding(val)[0]);
             }
         }
     }
@@ -863,7 +867,7 @@ void KVStore::load_hnsw_index_from_disk(const std::string &hnsw_data_root) {
         deleted_nodes_file.read((char *)deleted_node_vec.data(), vec_dim * sizeof(float));
         // 将被删结点的向量设为读出的向量值
         map[deleted_node_id]->embedding = deleted_node_vec;
-        // 将该向量值加入HNSW索引的删除集合
-        hnswIndex->del(deleted_node_vec);
+        // 将该结点加入HNSW索引的删除集合
+        hnswIndex->del(map[deleted_node_id]->key, deleted_node_vec);
     }
 }
