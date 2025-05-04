@@ -93,7 +93,7 @@ void KVStore::put(uint64_t key, const std::string &val) {
     else {
         // 当前为“添加”或“更新”操作，向量只需更新即可
         embeddings[key] = embedding(val)[0];
-        // hnswIndex需分类讨论：更新值/如加/添加/恢复
+        // hnswIndex需分类讨论：更新值/更新后恢复/如加/添加/删除后恢复
         // 更新值：原键在LSM-Tree中存在，key-get(key)和key-val都不存在于deleted nodes中，且get(key)不等于val
         // 更新后恢复：原键在LSM-Tree中存在，key-get(key)必不存在于deleted nodes，key-val存在于deleted nodes中
         // 如加：原键在LSM-Tree中存在，且key-val在deleted nodes中不存在，且get(key)等于val
@@ -591,15 +591,15 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
     // 计算查询向量
     std::vector<float> queryVec = embedding(query)[0];
 
-    // 遍历所有嵌入向量（embeddings映射和磁盘文件），计算相似度
-    load_embedding_from_disk();
-
     //维护小顶堆
     auto cmp = [](const std::pair<float, uint64_t>& a, const std::pair<float, uint64_t>& b) {
         return a.first > b.first; // 小顶堆，比较float值
     };
     std::priority_queue<std::pair<float, uint64_t>, std::vector<std::pair<float, uint64_t>>, decltype(cmp)> minHeap(cmp);
 
+
+    // 遍历所有嵌入向量（embeddings映射和磁盘文件），计算相似度
+    load_embedding_from_disk(); // 为遍历，暂时将所有向量加载回内存
     for (auto it: embeddings) {
         // 若该key已被删除，则跳过
         if (get(it.first) == "")continue;
@@ -616,6 +616,8 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
         result.insert(result.begin(), std::make_pair(minHeap.top().second, get(minHeap.top().second)));
         minHeap.pop();
     }
+
+    save_embedding_to_disk(); // 遍历完后，将向量存回
     return result;
 }
 
