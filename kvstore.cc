@@ -34,7 +34,7 @@ struct cmpPoi {
 KVStore::KVStore(const std::string &dir) :
     KVStoreAPI(dir) // read from sstables
 {
-    // hnswIndex = new HNSWIndex();
+    hnswIndex = new HNSWIndex();
     for (totalLevel = 0;; ++totalLevel) {
         std::string path = dir + "/level-" + std::to_string(totalLevel) + "/";
         std::vector<std::string> files;
