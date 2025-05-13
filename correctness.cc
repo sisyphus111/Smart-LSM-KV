@@ -149,7 +149,7 @@ public:
         store.reset();
 
         std::cout << "[Large Test]" << std::endl;
-        regular_test(1024 * 64);
+        regular_test(LARGE_TEST_MAX);
 
         //        store.reset();
         //        std::cout << "[Insert Test]" << std::endl;
