@@ -19,14 +19,22 @@ add_executable(correctness correctness.cc kvstore_api.h kvstore.h
         bloom.cpp bloom.h MurmurHash3.h utils.h test.h
         sstablehead.cpp sstablehead.h
         HNSW.h
-        HNSW.cpp)
+        HNSW.cpp
+        util.cpp
+        util.h
+        ThreadPool.cpp
+        ThreadPool.h)
 
 add_executable(persistence persistence.cc kvstore_api.h kvstore.h kvstore.cc
         skiplist.cpp skiplist.h sstable.cpp sstable.h
         bloom.cpp bloom.h MurmurHash3.h utils.h test.h
         sstablehead.cpp sstablehead.h
         HNSW.h
-        HNSW.cpp)
+        HNSW.cpp
+        util.cpp
+        util.h
+        ThreadPool.cpp
+        ThreadPool.h)
 
 
 add_subdirectory(third_party/llama.cpp)
