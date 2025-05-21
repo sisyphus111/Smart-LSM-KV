@@ -22,7 +22,6 @@ add_executable(correctness correctness.cc kvstore_api.h kvstore.h
         HNSW.cpp
         util.cpp
         util.h
-        ThreadPool.cpp
         ThreadPool.h)
 
 add_executable(persistence persistence.cc kvstore_api.h kvstore.h kvstore.cc
@@ -33,7 +32,6 @@ add_executable(persistence persistence.cc kvstore_api.h kvstore.h kvstore.cc
         HNSW.cpp
         util.cpp
         util.h
-        ThreadPool.cpp
         ThreadPool.h)
 
 
