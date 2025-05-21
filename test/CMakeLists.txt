@@ -1,6 +1,9 @@
 add_executable(Embedding_Test Embedding_Test.cpp
         ../HNSW.h
-        ../HNSW.cpp)
+        ../HNSW.cpp
+        ../util.cpp
+        ../util.h
+        ../ThreadPool.h)
 add_executable(E2E_Test
     E2E_test.cpp
     ../kvstore.cc
@@ -11,6 +14,24 @@ add_executable(E2E_Test
     ../utils.h
     ../HNSW.h
     ../HNSW.cpp
+        ../util.cpp
+        ../util.h
+        ../ThreadPool.h
+)
+
+add_executable(E2E_Test_Phase5
+        E2E_Test_Phase5.cpp
+        ../kvstore.cc
+        ../skiplist.cpp
+        ../sstable.cpp
+        ../bloom.cpp
+        ../sstablehead.cpp
+        ../utils.h
+        ../HNSW.h
+        ../HNSW.cpp
+        ../util.cpp
+        ../util.h
+        ../ThreadPool.h
 )
 
 
@@ -18,6 +39,8 @@ add_executable(E2E_Test
 target_link_libraries(Embedding_Test PUBLIC embedding)
 
 target_link_libraries(E2E_Test PUBLIC embedding)
+
+target_link_libraries(E2E_Test_Phase5 PUBLIC embedding)
 
 
 
@@ -32,6 +55,9 @@ add_executable(HNSW_Delete_Test
         ../utils.h
         ../HNSW.h
         ../HNSW.cpp
+        ../util.cpp
+        ../util.h
+        ../ThreadPool.h
 )
 
 target_compile_options(HNSW_Delete_Test PRIVATE
@@ -44,6 +70,9 @@ target_link_libraries(HNSW_Delete_Test PUBLIC embedding)
 # 简单跨平台测试
 add_executable(Simple_Cross_Plat_Test
         Simple_Cross_Plat_Test.cpp
+        ../util.cpp
+        ../util.h
+        ../ThreadPool.h
 )
 
 target_compile_options(Simple_Cross_Plat_Test PRIVATE
@@ -63,6 +92,9 @@ add_executable(Vector_Persistent_Test_Phase1
         ../utils.h
         ../HNSW.h
         ../HNSW.cpp
+        ../util.cpp
+        ../util.h
+        ../ThreadPool.h
 )
 
 # 为测试设置调试编译选项
@@ -84,6 +116,9 @@ add_executable(Vector_Persistent_Test_Phase2
         ../utils.h
         ../HNSW.h
         ../HNSW.cpp
+        ../util.cpp
+        ../util.h
+        ../ThreadPool.h
 )
 
 # 为测试设置调试编译选项
@@ -106,6 +141,9 @@ add_executable(HNSW_Persistent_Test_Phase1
         ../utils.h
         ../HNSW.h
         ../HNSW.cpp
+        ../util.cpp
+        ../util.h
+        ../ThreadPool.h
 )
 
 # 为测试设置调试编译选项
@@ -125,6 +163,9 @@ add_executable(HNSW_Persistent_Test_Phase2
         ../utils.h
         ../HNSW.h
         ../HNSW.cpp
+        ../util.cpp
+        ../util.h
+        ../ThreadPool.h
 )
 
 # 为测试设置调试编译选项
@@ -148,6 +189,9 @@ add_executable(My_Test
         ../HNSW.h
         ../HNSW.cpp
         ../test.h
+        ../util.cpp
+        ../util.h
+        ../ThreadPool.h
 )
 
 # 为测试设置调试编译选项
@@ -169,6 +213,9 @@ add_executable(HNSW_Basic_Persistent_Test_Phase1
         ../utils.h
         ../HNSW.h
         ../HNSW.cpp
+        ../util.cpp
+        ../util.h
+        ../ThreadPool.h
 )
 
 # 为测试设置调试编译选项
@@ -189,6 +236,9 @@ add_executable(HNSW_Basic_Persistent_Test_Phase2
         ../utils.h
         ../HNSW.h
         ../HNSW.cpp
+        ../util.cpp
+        ../util.h
+        ../ThreadPool.h
 )
 
 # 为测试设置调试编译选项

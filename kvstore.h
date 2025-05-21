@@ -11,6 +11,7 @@
 #include "sstablehead.h"
 #include "embedding.h"
 #include "HNSW.h"
+#include "util.h"
 
 #include <map>
 #include <set>
@@ -29,8 +30,11 @@ private:
 
     HNSWIndex* hnswIndex; // HNSW索引
 
+    repoUtil util; // 读取ref文件的类
+
     std::unordered_map<uint64_t, std::vector<float>> embeddings;// phase4，存放key-embedding对，支持磁盘读
 
+    std::vector<float> getEmbd(std::string str); // 根据字符串获取嵌入向量，phase5中配合util使用
 
 
 public:

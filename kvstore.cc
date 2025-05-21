@@ -34,6 +34,7 @@ struct cmpPoi {
 KVStore::KVStore(const std::string &dir) :
     KVStoreAPI(dir) // read from sstables
 {
+    util.init();
     hnswIndex = new HNSWIndex();
     for (totalLevel = 0;; ++totalLevel) {
         std::string path = dir + "/level-" + std::to_string(totalLevel) + "/";
@@ -88,11 +89,11 @@ void KVStore::put(uint64_t key, const std::string &val) {
         // 当前为删除操作
         embeddings[key] = std::vector<float>(vec_dim, std::numeric_limits<float>::max());
         // hnswIndex需分类讨论：之前已添加键值对，则对相应的键-嵌入向量进行删除；若原来没有该键，则不用操作
-        if (get(key) != "") hnswIndex->del(key, embedding(get(key))[0]);
+        if (get(key) != "") hnswIndex->del(key, getEmbd(get(key)));
     }
     else {
         // 当前为“添加”或“更新”操作，向量只需更新即可
-        embeddings[key] = embedding(val)[0];
+        embeddings[key] = getEmbd(val);
         // hnswIndex需分类讨论：更新值/更新后恢复/如加/添加/删除后恢复
         // 更新值：原键在LSM-Tree中存在，key-get(key)和key-val都不存在于deleted nodes中，且get(key)不等于val
         // 更新后恢复：原键在LSM-Tree中存在，key-get(key)必不存在于deleted nodes，key-val存在于deleted nodes中
@@ -101,29 +102,29 @@ void KVStore::put(uint64_t key, const std::string &val) {
         // 删除后恢复：原键在LSM-Tree中不存在，但key-val在deleted nodes中存在
         if (get(key) != "") {
             // 更新值/更新后恢复/如加
-            if (get(key) != val && !hnswIndex->isInDeletedNodes(key, embedding(val)[0])) {
+            if (get(key) != val && !hnswIndex->isInDeletedNodes(key, getEmbd(val))) {
                 // 更新值
-                hnswIndex->del(key, embedding(get(key))[0]); // 删除原值
-                hnswIndex->insert(embedding(val)[0], key); // 插入新值
+                hnswIndex->del(key, getEmbd(get(key))); // 删除原值
+                hnswIndex->insert(getEmbd(val), key); // 插入新值
             }
-            else if (hnswIndex->isInDeletedNodes(key, embedding(val)[0])) {
+            else if (hnswIndex->isInDeletedNodes(key, getEmbd(val))) {
                 // 更新后恢复
-                hnswIndex->restoreDeletedNode(key, embedding(val)[0]); // 恢复更新前的值
-                hnswIndex->del(key, embedding(get(key))[0]); // 删除更新后的值
+                hnswIndex->restoreDeletedNode(key, getEmbd(val)); // 恢复更新前的值
+                hnswIndex->del(key, getEmbd(get(key))); // 删除更新后的值
             }
-            else if (get(key) == val && !hnswIndex->isInDeletedNodes(key, embedding(val)[0])) {
+            else if (get(key) == val && !hnswIndex->isInDeletedNodes(key, getEmbd(val))) {
                 // 如加
             }
         }
         else {
             // 添加/删除后恢复
-            if (get(key) == "" && !hnswIndex->isInDeletedNodes(key, embedding(val)[0])) {
+            if (get(key) == "" && !hnswIndex->isInDeletedNodes(key, getEmbd(val))) {
                 // 添加
-                hnswIndex->insert(embedding(val)[0], key);
+                hnswIndex->insert(getEmbd(val), key);
             }
-            else if (get(key) == "" && hnswIndex->isInDeletedNodes(key, embedding(val)[0])) {
+            else if (get(key) == "" && hnswIndex->isInDeletedNodes(key, getEmbd(val))) {
                 // 删除后恢复
-                hnswIndex->restoreDeletedNode(key, embedding(val)[0]);
+                hnswIndex->restoreDeletedNode(key, getEmbd(val));
             }
         }
     }
@@ -589,7 +590,7 @@ std::string KVStore::fetchString(std::string file, int startOffset, uint32_t len
 // 使用堆排序
 std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::string query, int k){
     // 计算查询向量
-    std::vector<float> queryVec = embedding(query)[0];
+    std::vector<float> queryVec = getEmbd(query);
 
     //维护小顶堆
     auto cmp = [](const std::pair<float, uint64_t>& a, const std::pair<float, uint64_t>& b) {
@@ -624,7 +625,7 @@ std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn(std::stri
 
 std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn_hnsw(std::string query, int k){
     // 计算查询向量
-    std::vector<float> queryVec = embedding(query)[0];
+    std::vector<float> queryVec = getEmbd(query);
     std::vector<uint64_t> result_key = hnswIndex->search_knn_hnsw(queryVec, k);
     // 将结果键值对存入向量
     std::vector<std::pair<std::uint64_t, std::string>> result;
@@ -872,4 +873,11 @@ void KVStore::load_hnsw_index_from_disk(const std::string &hnsw_data_root) {
         // 将该结点加入HNSW索引的删除集合
         hnswIndex->del(map[deleted_node_id]->key, deleted_node_vec);
     }
+}
+
+std::vector<float> KVStore::getEmbd(std::string str) {
+    // 先尝试在ref文件中查找
+    std::vector<float> vec = util.getVec(str);
+    if (vec.size() == 0) vec = embedding(str)[0];
+    return vec;
 }

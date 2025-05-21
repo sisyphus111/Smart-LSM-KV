@@ -139,7 +139,7 @@ void HNSWIndex::insert(const std::vector<float>& embedding, uint64_t key) {
                 if (it->neighbors[i].size() > M_max) {
                     // 删除最远的一个连接
                     float worst_sim = 1;
-                    Node *worst_neighbor = nullptr;
+                    Node *worst_neighbor = it->neighbors[i].back();
                     for (auto it2: it->neighbors[i]) {
                         float cursim = common_embd_similarity_cos(it2->embedding.data(), it->embedding.data(), it2->embedding.size());
                         if (cursim < worst_sim) {
