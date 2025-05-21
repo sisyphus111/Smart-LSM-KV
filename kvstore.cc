@@ -54,7 +54,6 @@ KVStore::KVStore(const std::string &dir) :
     }
 
     // 启动时加载HNSW
-    // load_embedding_from_disk();
     load_hnsw_index_from_disk();
 
 }
@@ -762,6 +761,8 @@ void KVStore::save_hnsw_index_to_disk(const std::string &hnsw_data_root) {
 * @param hnsw_data_root HNSW保存的路径根目录，带"/"
 */
 void KVStore::load_hnsw_index_from_disk(const std::string &hnsw_data_root) {
+    std::cout << "start loading hnsw from disk" << std::endl;
+
     if (hnswIndex) {
         delete hnswIndex;
         hnswIndex = nullptr;
@@ -873,6 +874,8 @@ void KVStore::load_hnsw_index_from_disk(const std::string &hnsw_data_root) {
         // 将该结点加入HNSW索引的删除集合
         hnswIndex->del(map[deleted_node_id]->key, deleted_node_vec);
     }
+
+    std::cout << "load hnsw from disk successfully" << std::endl;
 }
 
 std::vector<float> KVStore::getEmbd(std::string str) {

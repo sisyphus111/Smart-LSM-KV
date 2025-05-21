@@ -6,8 +6,12 @@
 #include <queue>
 #include <iostream>
 #include <fstream>
+#include <future>
 #include "utils.h"
-
+#include "ThreadPool.h"
+#include "concurrentqueue.h"
+#include <tbb/concurrent_unordered_map.h>
+#include <tbb/concurrent_priority_queue.h>
 
 HNSWIndex::HNSWIndex(int M, int M_max, int efConstruction, Node* entry, int m_L) : M(M), M_max(M_max), efConstruction(efConstruction), entry(entry), m_L(m_L), gen(rd()) {
     deleted_nodes.clear();
@@ -413,7 +417,145 @@ void HNSWIndex::saveToDisk(const std::string &hnsw_data_root) {
 }
 
 std::vector<uint64_t> HNSWIndex::search_knn_hnsw_parallel(const std::vector<float>& query, int k) {
+    if(!entry) return std::vector<uint64_t>();
 
+    // 从entry向下寻找
+    int curLevel = entry->level - 1;
+    Node *cur = entry;
+
+    const int NUM_WORKERS = std::thread::hardware_concurrency();
+    ThreadPool pool(NUM_WORKERS);// 使用和物理核心数相同的线程池
+
+    while(curLevel >= 0 && !cur->neighbors[curLevel].empty()) {
+        // 并行计算当前结点所有邻居的相似度
+        std::vector<std::future<std::pair<float, Node*>>> futures;
+        float cur_sim = common_embd_similarity_cos(cur->embedding.data(), query.data(), cur->embedding.size());
+        
+        // 为每个邻居创建一个计算任务
+        for(auto neighbor : cur->neighbors[curLevel]) {
+            futures.push_back(pool.enqueue([neighbor, &query]() {
+                float sim = common_embd_similarity_cos(neighbor->embedding.data(), query.data(), neighbor->embedding.size());
+                return std::make_pair(sim, neighbor);
+            }));
+        }
+
+        // 找出最相似的邻居
+        float best_sim = cur_sim;
+        Node *best_neighbor = nullptr;
+
+        for(auto &fut : futures) {
+            auto [sim, neighbor] = fut.get();
+            if(sim > best_sim) {
+                best_sim = sim;
+                best_neighbor = neighbor;
+            }
+        }
+
+        // 如果找到了更相似的邻居，则更新当前结点和层级
+        if(best_neighbor) cur = best_neighbor;
+        else curLevel--;
+        
+    }
+
+    // 在底层进行搜索
+    tbb::concurrent_unordered_map<Node*, bool> visited; // 线程安全的visited映射
+
+    //初始结点
+    float cur_sim = common_embd_similarity_cos(cur->embedding.data(), query.data(), cur->embedding.size());
+
+    // 线程安全队列
+    moodycamel::ConcurrentQueue<std::pair<float, Node*>> queue;
+    queue.enqueue(std::make_pair(cur_sim, cur));
+    visited[cur] = true;
+
+    // 结果集
+    tbb::concurrent_priority_queue<std::pair<float, Node*>> result_pq;
+
+    // 使用原子变量跟踪探索的节点数和活动线程
+    std::atomic<int> explored_nodes(0);
+    std::atomic<int> active_workers(0);
+    std::atomic<bool> search_complete(false);
+
+    std::vector<std::future<void>> workers;
+
+    for(int i = 0; i < NUM_WORKERS; ++i) {
+        workers.push_back(pool.enqueue([&](){
+            active_workers++;
+
+            std::vector<std::pair<float, Node*>> local_results;
+            std::pair<float, Node*> current;
+
+            while(!search_complete.load()){
+                // 从队列中获取任务
+                if(queue.try_dequeue(current)){
+                    //处理当前结点
+                    local_results.push_back(current);
+                    explored_nodes++;
+
+                    // 将未访问的邻居入队
+                    for (auto neighbor : current.second->neighbors[0]){
+                        bool expected = false;
+                        // 尝试将该结点标记为已访问
+                        if (visited.insert({neighbor, true}).second){
+                            float sim = common_embd_similarity_cos(neighbor->embedding.data(), query.data(), neighbor->embedding.size());
+                            queue.enqueue(std::make_pair(sim, neighbor));
+                        }
+                    }
+
+                    // 定期将局部结果合并到全局结果
+                    if (local_results.size() > 10) {
+                        for (auto &result : local_results){
+                            result_pq.push(result);
+                        }
+                        local_results.clear();
+                    }
+
+                    // 如果已经探索了足够多的结点，则终止探索
+                    if (explored_nodes.load() > efConstruction && queue.size_approx() == 0){
+                        search_complete.store(true);
+                        break;
+                    }
+                    std::this_thread::yield();
+                }
+            }
+            // 将剩余的局部结果合并到全局结果
+            for (auto &result : local_results){
+                result_pq.push(result);
+            }
+            active_workers--;
+        }));
+    }
+    // 等待所有工作线程完成
+    for (auto &worker : workers) {
+        worker.wait();
+    }
+
+    // 收集结果并过滤被删除的节点
+    std::vector<std::pair<float, Node*>> candidates;
+    std::pair<float, Node*> temp;
+    while (result_pq.try_pop(temp)) {
+        candidates.push_back(temp);
+    }
+    
+    // 排序以获取k个最相似的节点
+    std::sort(candidates.begin(), candidates.end(), 
+              [](const auto& a, const auto& b) { return a.first > b.first; });
+    
+    // 并行过滤被删除的节点
+    std::vector<std::future<bool>> filter_futures;
+    for (const auto& candidate : candidates) {
+        filter_futures.push_back(pool.enqueue([this, &candidate]() {
+            return !isInDeletedNodes(candidate.second->key, candidate.second->embedding);
+        }));
+    }
+    
+    // 收集最终结果
+    std::vector<uint64_t> result;
+    for (size_t i = 0; i < candidates.size() && result.size() < k; i++) {
+        if (filter_futures[i].get()) {
+            result.push_back(candidates[i].second->key);
+        }
+    }
+    
+    return result;
 }
-
-
