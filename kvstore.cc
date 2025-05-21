@@ -881,3 +881,15 @@ std::vector<float> KVStore::getEmbd(std::string str) {
     if (vec.size() == 0) vec = embedding(str)[0];
     return vec;
 }
+
+std::vector<std::pair<std::uint64_t, std::string>> KVStore::search_knn_hnsw_parallel(std::string query, int k){
+    // 计算查询向量
+    std::vector<float> queryVec = getEmbd(query);
+    std::vector<uint64_t> result_key = hnswIndex->search_knn_hnsw_parallel(queryVec, k);
+    // 将结果键值对存入向量
+    std::vector<std::pair<std::uint64_t, std::string>> result;
+    for (auto &it: result_key) {
+        result.push_back(std::make_pair(it, get(it)));
+    }
+    return result;
+}

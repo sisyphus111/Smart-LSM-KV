@@ -10,7 +10,7 @@
 #include <fstream>
 
 
-class CorrectnessTest : public Test {
+class E2ETest : public Test {
 private:
     const uint64_t SIMPLE_TEST_MAX = 512;
     const uint64_t MIDDLE_TEST_MAX  = 1024 * 64;
@@ -27,7 +27,9 @@ private:
         phase();
         // test search_knn_hnsw function
         std::cout << "Testing search_knn_hnsw function:" << std::endl;
-        int k = 3, passCnt = 0;
+        int k = 3, passCnt = 0, passCnt_parallel = 0;
+
+        // 测试串行search_knn_hnsw
         for(idx = 0; idx < max; ++idx) {
             auto res = store.search_knn_hnsw(util.getStr(idx), k);
             for (int i = 0; i < k; i++) {
@@ -39,12 +41,24 @@ private:
         std::cout << "test set size: " << max << std::endl;
         std::cout << "k: " << k << std::endl;
         std::cout << "search_knn_hnsw pass count: " << passCnt << std::endl;
-        std::cout << "search_knn_hnsw accuracy: " << passCnt / max << std::endl;
+        std::cout << "search_knn_hnsw accuracy: " << float(passCnt / max) << std::endl;
 
+        // 测试并行search_knn_hnsw
+        for(idx = 0; idx < max; ++idx) {
+            auto res = store.search_knn_hnsw_parallel(util.getStr(idx), k);
+            for (int i = 0; i < k; i++) {
 
+                if (res[i].second == util.getStr(idx)) {passCnt_parallel++;break;}
+            }
+        }
+
+        std::cout << "test set size: " << max << std::endl;
+        std::cout << "k: " << k << std::endl;
+        std::cout << "search_knn_hnsw pass count: " << passCnt_parallel << std::endl;
+        std::cout << "search_knn_hnsw accuracy: " << float(passCnt_parallel / max) << std::endl;
     }
 public:
-    CorrectnessTest(const std::string &dir, bool v = true) : Test(dir, v) {util.init();}
+    E2ETest(const std::string &dir, bool v = true) : Test(dir, v) {util.init();}
 
     void start_test(void *args = NULL) override {
         std::cout << "===========================" << std::endl;
@@ -65,7 +79,7 @@ int main(int argc, char *argv[]) {
     std::cout << std::endl;
     std::cout.flush();
 
-    CorrectnessTest test("./data", verbose);
+    E2ETest test("./data", verbose);
 
     test.start_test();
 

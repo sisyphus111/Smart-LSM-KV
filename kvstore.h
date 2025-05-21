@@ -71,4 +71,5 @@ public:
 
     std::vector<std::pair<std::uint64_t, std::string>> search_knn(std::string query, int k);
     std::vector<std::pair<std::uint64_t, std::string>> search_knn_hnsw(std::string query, int k);
+    std::vector<std::pair<std::uint64_t, std::string>> search_knn_hnsw_parallel(std::string query, int k);
 };

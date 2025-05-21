@@ -28,6 +28,7 @@ public:
 
     void insert(const std::vector<float>& embedding, uint64_t key); // 插入
     std::vector<uint64_t> search_knn_hnsw(const std::vector<float>& query, int k); // 搜索k个最近邻，按照相似度降序返回key的向量
+    std::vector<uint64_t> search_knn_hnsw_parallel(const std::vector<float>& query, int k); // 搜索k个最近邻，按照相似度降序返回key的向量
 
     void del(uint64_t key, const std::vector<float>& vec); // 删除某个键-嵌入向量对，使用lazy delete
 

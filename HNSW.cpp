@@ -412,4 +412,8 @@ void HNSWIndex::saveToDisk(const std::string &hnsw_data_root) {
 
 }
 
+std::vector<uint64_t> HNSWIndex::search_knn_hnsw_parallel(const std::vector<float>& query, int k) {
+
+}
+
 
