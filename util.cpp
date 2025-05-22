@@ -3,7 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-void repoUtil::init() {
+repoUtil::repoUtil() {
     std::cout << "util类开始读取数据" << std::endl;
 
     std::string strPath = "100k_data_ref/cleaned_text_100k.txt";
@@ -75,3 +75,5 @@ std::vector<float> repoUtil::getVec(std::string str) {
     }
     return map[str];
 }
+
+repoUtil util;

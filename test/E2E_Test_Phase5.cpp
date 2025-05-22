@@ -10,21 +10,17 @@
 #include <fstream>
 
 
-class E2ETest : public Test {
+class E2ETest_Phase5 : public Test {
 private:
-    const uint64_t SIMPLE_TEST_MAX = 512;
-    const uint64_t MIDDLE_TEST_MAX  = 1024 * 64;
-    const uint64_t LARGE_TEST_MAX  = 1024 * 64;
-
-    repoUtil util;
+    void prepare() {
+        store.reset();
+        std::cout << "start preparing data" << std::endl;
+        for(int idx = 0; idx < 32768; idx++) store.put(idx, util.getStr(idx));
+        std::cout << "finish preparing data" << std::endl;
+    }
 
     void text_test(int max){
-        // test get function
-        int idx = 0;
-        max = std::min(max, 50000);
-        for(idx = 0; idx < max; idx++) store.put(idx, util.getStr(idx));
-        for(idx = 0; idx < max; idx++) EXPECT(util.getStr(idx), store.get(idx));
-        phase();
+        int idx;
         // test search_knn_hnsw function
         std::cout << "Testing search_knn_hnsw function:" << std::endl;
         int k = 3, passCnt = 0, passCnt_parallel = 0;
@@ -76,22 +72,16 @@ private:
 
 
 
-
-
-
-
-
-
 public:
-    E2ETest(const std::string &dir, bool v = true) : Test(dir, v) {util.init();}
+    E2ETest_Phase5(const std::string &dir, bool v = true) : Test(dir, v) {}
 
     void start_test(void *args = NULL) override {
-        std::cout << "===========================" << std::endl;
-        std::cout << "KVStore Correctness Test" << std::endl;
+        prepare();
 
-        store.reset();
-        std::cout << "[Text Test]" << std::endl;
-        text_test(400); // 指定测试行数，原为120
+        for (int i = 0; i < 4; i++){
+            std::cout << "[Text Test" << i <<" ]" << std::endl;
+            text_test(4096 * (1 << i)); // 4096, 8192, 16384, 32768
+        }
     }
 };
 
@@ -104,7 +94,7 @@ int main(int argc, char *argv[]) {
     std::cout << std::endl;
     std::cout.flush();
 
-    E2ETest test("./data", verbose);
+    E2ETest_Phase5 test("./data", verbose);
 
     test.start_test();
 

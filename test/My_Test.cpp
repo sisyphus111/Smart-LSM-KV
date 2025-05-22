@@ -4,8 +4,6 @@
 
 
 int main() {
-    repoUtil util;
-    util.init();
 
     std::string testStr = util.getStr(27);
     std::vector<float> testVec = util.getVec(27);

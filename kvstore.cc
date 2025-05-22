@@ -34,7 +34,6 @@ struct cmpPoi {
 KVStore::KVStore(const std::string &dir) :
     KVStoreAPI(dir) // read from sstables
 {
-    util.init();
     hnswIndex = new HNSWIndex();
     for (totalLevel = 0;; ++totalLevel) {
         std::string path = dir + "/level-" + std::to_string(totalLevel) + "/";
@@ -54,7 +53,7 @@ KVStore::KVStore(const std::string &dir) :
     }
 
     // 启动时加载HNSW
-    load_hnsw_index_from_disk();
+    // load_hnsw_index_from_disk();
 
 }
 

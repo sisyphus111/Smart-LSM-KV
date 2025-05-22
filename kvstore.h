@@ -30,7 +30,6 @@ private:
 
     HNSWIndex* hnswIndex; // HNSW索引
 
-    repoUtil util; // 读取ref文件的类
 
     std::unordered_map<uint64_t, std::vector<float>> embeddings;// phase4，存放key-embedding对，支持磁盘读
 
