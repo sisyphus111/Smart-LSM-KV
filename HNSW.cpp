@@ -10,9 +10,7 @@
 #include <unordered_set>
 #include "utils.h"
 #include "ThreadPool.h"
-#include "concurrentqueue.h"
-#include <tbb/concurrent_unordered_map.h>
-#include <tbb/concurrent_priority_queue.h>
+
 
 HNSWIndex::HNSWIndex(int M, int M_max, int efConstruction, Node* entry, int m_L) : M(M), M_max(M_max), efConstruction(efConstruction), entry(entry), m_L(m_L), gen(rd()) {
     deleted_nodes.clear();
@@ -493,12 +491,13 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw_parallel(const std::vector<floa
     visited.insert(cur);
 
     // 收集efConstruction个候选节点——使用并行加速
+    // 使用分区策略优化候选节点收集
     {
-        // 第一步：使用BFS收集所有候选节点，但不计算相似度
         std::vector<Node*> candidate_nodes;
         std::mutex candidates_mutex;
 
-        while (!bfs_queue.empty() && candidate_nodes.size() < efConstruction) {
+        // 先串行地收集BFS遍历候选节点
+        while (!bfs_queue.empty() && candidate_nodes.size() < efConstruction * 2) {
             Node* current = bfs_queue.front();
             bfs_queue.pop();
 
@@ -512,26 +511,41 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw_parallel(const std::vector<floa
             }
         }
 
-        // 第二步：并行计算相似度
-        std::vector<std::future<std::pair<float, Node*>>> sim_futures;
-        for (Node* node : candidate_nodes) {
-            sim_futures.push_back(pool.enqueue([&query, node]() {
-                float sim = common_embd_similarity_cos(node->embedding.data(),
-                                                    query.data(),
-                                                    node->embedding.size());
-                return std::make_pair(sim, node);
+        // 分区并行计算相似度
+        size_t partition_size = candidate_nodes.size() / NUM_THREADS;
+        std::vector<std::future<void>> futures;
+
+        for (int t = 0; t < NUM_THREADS; t++) {
+            futures.push_back(pool.enqueue([&candidate_nodes, &query, &candidates, &candidates_mutex, t, partition_size]() {
+                std::priority_queue<std::pair<float, Node*>> local_candidates;
+
+                size_t start = t * partition_size;
+                size_t end = (t == NUM_THREADS - 1) ? candidate_nodes.size() : start + partition_size;
+
+                for (size_t i = start; i < end; i++) {
+                    float sim = common_embd_similarity_cos(candidate_nodes[i]->embedding.data(),
+                                                           query.data(),
+                                                           candidate_nodes[i]->embedding.size());
+                    local_candidates.push(std::make_pair(sim, candidate_nodes[i]));
+                }
+
+                // 合并本地结果到全局队列
+                std::lock_guard<std::mutex> lock(candidates_mutex);
+                while (!local_candidates.empty()) {
+                    candidates.push(local_candidates.top());
+                    local_candidates.pop();
+                }
             }));
         }
 
-        // 第三步：收集计算结果并放入优先级队列
-        for (auto& fut : sim_futures) {
-            candidates.push(fut.get());
+        for (auto& fut : futures) {
+            fut.wait();
         }
     }
 
     std::vector<uint64_t> result;
     while (result.size() < k && !candidates.empty()) {
-        result.push_back(candidates.top().second->key);
+        if (!deleted_nodes.contains(std::make_pair(candidates.top().second->key,candidates.top().second->embedding))) result.push_back(candidates.top().second->key);
         candidates.pop();
     }
     return result;

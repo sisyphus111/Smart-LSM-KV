@@ -82,6 +82,7 @@ KVStore::~KVStore()
  * No return values for simplicity.
  */
 void KVStore::put(uint64_t key, const std::string &val) {
+    std::cout << "put key: " << key  << std::endl;
     // put操作的不同情况：
     if (val == DEL) {
         // 当前为删除操作
