@@ -366,144 +366,197 @@ void KVStore::scan(uint64_t key1, uint64_t key2, std::list<std::pair<uint64_t, s
     }
 }
 
+/**
+ * @brief LSM-Tree的层级压缩合并函数，将当前层的SSTable合并到下一层
+ * @param level 要进行压缩的层级，默认从第0层开始
+ */
 void KVStore::compaction(int level) {
-    // 从第0层合并时，若文件个数未超阈值，则不需要合并
+    // 检查第0层的文件数量是否超过阈值（2个）
+    // 如果第0层文件数量不超过2个，则不需要进行合并操作
     if (level == 0 && sstableIndex[0].size() <= 2) return;
 
-    // 若下一层目录不存在则创建
+    // 构造下一层的目录路径字符串
+    // 例如：当前层为0时，下一层路径为"./data/level-1"
     std::string targetLevelPath = "./data/level-" + std::to_string(level + 1);
+    
+    // 检查下一层目录是否存在，如果不存在则创建该目录
     if (!utils::dirExists(targetLevelPath)) {
+        // 创建下一层目录
         utils::mkdir(targetLevelPath.c_str());
+        // 更新总层数，确保totalLevel至少为level+1
         if (totalLevel < level + 1) totalLevel = level + 1;
     }
 
-    // 从当前层选择SSTable进行合并
+    // 创建一个向量来存储要参与合并的SSTable头信息
     std::vector<sstablehead> selectedTables;
+    // 初始化键值范围的最小值为无穷大（用于后续比较求最小值）
     uint64_t minKey = INF;
+    // 初始化键值范围的最大值为0（用于后续比较求最大值）
     uint64_t maxKey = 0;
 
+    // 根据不同层级采用不同的合并策略
     if (level == 0) {
-        // 第0层，全部合并
+        // 第0层策略：全部文件参与合并
+        // 原因：第0层的SSTable可能有重叠的键值范围，需要全部合并
         for (int i = 0; i < sstableIndex[0].size(); i++) {
+            // 将当前SSTable头信息添加到待合并列表
             selectedTables.push_back(sstableIndex[0][i]);
+            // 更新整体键值范围的最小值
             minKey = std::min(minKey, sstableIndex[0][i].getMinV());
+            // 更新整体键值范围的最大值
             maxKey = std::max(maxKey, sstableIndex[0][i].getMaxV());
         }
     } else {
-        // 其他层，取4个进行合并
+        // 其他层策略：最多选择4个文件进行合并
+        // 计算实际要合并的文件数量（不超过4个，也不超过该层的总文件数）
         int filesToMerge = std::min(4, (int)sstableIndex[level].size());
         for (int i = 0; i < filesToMerge; i++) {
+            // 将当前SSTable头信息添加到待合并列表
             selectedTables.push_back(sstableIndex[level][i]);
+            // 更新整体键值范围的最小值
             minKey = std::min(minKey, sstableIndex[level][i].getMinV());
+            // 更新整体键值范围的最大值
             maxKey = std::max(maxKey, sstableIndex[level][i].getMaxV());
         }
     }
 
-    // 错误：没有选中任何SSTable
+    // 错误检查：如果没有选中任何SSTable，则直接返回
     if (selectedTables.empty()) return;
 
-    // 寻找下一层有重叠的SSTable，进行合并
+    // 在下一层寻找与当前合并范围有重叠的SSTable，也要参与合并
+    // 这是LSM-Tree合并的重要特性：避免键值范围重叠
     if (level + 1 <= totalLevel) {
+        // 遍历下一层的所有SSTable头信息
         for (auto &sshead : sstableIndex[level + 1]) {
-            // Check for key range overlap
+            // 检查键值范围是否有重叠
+            // 重叠条件：!(maxKey < sshead.getMinV() || minKey > sshead.getMaxV())
+            // 即：不满足(完全小于 或 完全大于)，则说明有重叠
             if (!(maxKey < sshead.getMinV() || minKey > sshead.getMaxV())) {
+                // 有重叠，将该SSTable也加入合并列表
                 selectedTables.push_back(sshead);
             }
         }
     }
 
-    // 准备多路合并数据结构
+    // 创建优先级队列用于多路合并，使用poi结构体和cmpPoi比较器
+    // poi结构体包含：sstableId(SSTable编号), pos(位置), time(时间戳), index(索引)
     std::priority_queue<poi, std::vector<poi>, cmpPoi> pq;
+    // 创建向量存储所有要合并的SSTable对象（完整数据）
     std::vector<sstable> tables(selectedTables.size());
 
-    // 将待合并SSTable全部加载到内存
+    // 将所有待合并的SSTable从磁盘加载到内存中
     for (size_t i = 0; i < selectedTables.size(); i++) {
+        // 根据文件名从磁盘加载完整的SSTable数据到内存
         tables[i].loadFile(selectedTables[i].getFilename().c_str());
 
-        // 初始化优先级队列，加入每个SSTable的第一个条目
+        // 如果SSTable不为空，将其第一个条目加入优先级队列
         if (tables[i].getCnt() > 0) {
-            poi entry;
-            entry.sstableId = i;
-            entry.pos = 0;
-            entry.time = tables[i].getTime();
-            entry.index = tables[i].getIndexById(0);
-            pq.push(entry);
+            poi entry;                                    // 创建优先级队列条目
+            entry.sstableId = i;                         // 记录是第i个SSTable
+            entry.pos = 0;                               // 记录是该SSTable的第0个条目
+            entry.time = tables[i].getTime();            // 记录时间戳用于版本控制
+            entry.index = tables[i].getIndexById(0);     // 获取第0个索引条目（包含key等信息）
+            pq.push(entry);                              // 加入优先级队列
         }
     }
 
-    // 创建用于存储合并结果的SSTable
+    // 创建新的SSTable用于存储合并结果
     sstable newTable;
-    newTable.reset();
-    newTable.setTime(++TIME);
+    newTable.reset();                                    // 重置SSTable状态，清空所有数据
+    newTable.setTime(++TIME);                           // 设置新的全局时间戳
+    // 构造输出文件路径：目标层级目录/时间戳.sst
     std::string outPath = targetLevelPath + "/" + std::to_string(TIME) + ".sst";
-    newTable.setFilename(outPath);
+    newTable.setFilename(outPath);                      // 设置新SSTable的文件名
 
-
+    // 用于记录上一个处理的键值，避免重复处理相同的键
     uint64_t lastKey = INF;
 
-    // 多路合并主循环
+    // 多路合并的主循环，直到优先级队列为空
     while (!pq.empty()) {
+        // 取出优先级最高的条目（键值最小，或键值相同时时间戳最新）
         poi current = pq.top();
         pq.pop();
 
-        uint64_t key = current.index.key;
-        int tableId = current.sstableId;
-        int pos = current.pos;
+        // 提取当前条目的相关信息
+        uint64_t key = current.index.key;               // 当前条目的键
+        int tableId = current.sstableId;                // 来源SSTable的ID
+        int pos = current.pos;                          // 在该SSTable中的位置索引
 
-        //当前处理条目的值
+        // 从对应的SSTable中获取当前位置的数据值
         std::string value = tables[tableId].getData(pos);
 
 
         if (key == lastKey) {
-            // 若有重复则跳过
+            // 检查是否与上一个处理的键相同
+            // 如果键相同，跳过此条目（因为优先级队列保证了时间戳最新的在前）
+            // 这样可以保留最新版本的数据，丢弃旧版本
         } else {
-            // 下一层是不是最底层——删除标记是否可以去掉
+            // 新的键，需要处理
+            // 判断下一层是否为最底层，这决定了是否可以丢弃删除标记
             bool isDeepestLevel = (level + 1 == totalLevel);
 
 
+            // 决定是否保留此条目的逻辑：
+            // 1. 如果值不是删除标记(DEL)，则保留
+            // 2. 如果值是删除标记但不是最底层，也要保留（删除标记需要向下传播）
+            // 3. 只有在最底层才能真正丢弃删除标记
             if (value != DEL || !isDeepestLevel) {
-                // 检查.sst文件是否即将超过2MB
+                // 检查新SSTable的大小是否即将超过2MB限制
+                // 12字节是索引条目大小，value.size()是数据大小
                 if (newTable.getBytes() + 12 + value.size() > MAXSIZE) {
+                    // 如果超过大小限制，先将当前SSTable写入磁盘
                     newTable.putFile(newTable.getFilename().c_str());
+                    // 将SSTable头信息添加到对应层级的索引中
                     addsstable(newTable, level + 1);
 
-                    // 重置
+                    // 重置SSTable准备创建新的文件
                     newTable.reset();
-                    newTable.setTime(++TIME);
+                    newTable.setTime(++TIME);           // 分配新的时间戳
+                    // 构造新的输出文件路径
                     outPath = targetLevelPath + "/" + std::to_string(TIME) + ".sst";
                     newTable.setFilename(outPath);
                 }
 
+                // 将键值对插入到新的SSTable中
                 newTable.insert(key, value);
             }
+            // 更新最后处理的键值
             lastKey = key;
         }
 
-        // 加入下一个元素
+        // 检查当前SSTable是否还有下一个条目
         if (pos + 1 < tables[tableId].getCnt()) {
+            // 创建下一个条目并加入优先级队列
             poi next;
-            next.sstableId = tableId;
-            next.pos = pos + 1;
-            next.time = current.time;
-            next.index = tables[tableId].getIndexById(pos + 1);
-            pq.push(next);
+            next.sstableId = tableId;                    // 相同的SSTable ID
+            next.pos = pos + 1;                          // 位置索引加1
+            next.time = current.time;                    // 相同的时间戳
+            next.index = tables[tableId].getIndexById(pos + 1);  // 获取下一个索引条目
+            pq.push(next);                               // 加入优先级队列
         }
     }
 
-    // 处理最后一个
+    // 处理最后一个SSTable（如果不为空）
     if (newTable.getCnt() > 0) {
+        // 将最后的SSTable写入磁盘
         newTable.putFile(newTable.getFilename().c_str());
+        // 将SSTable头信息添加到对应层级的索引中
         addsstable(newTable, level + 1);
     }
 
-    // 删除所有归并文件
+    // 删除所有参与合并的原始SSTable文件
+    // 这是合并过程的清理步骤，释放磁盘空间
     for (size_t i = 0; i < selectedTables.size(); i++) {
         delsstable(selectedTables[i].getFilename());
     }
 
-    // 检查下一层是否需要归并
+    // 计算下一层的文件数量阈值
+    // 阈值公式：2^(level+2)，即第1层阈值为8，第2层阈值为16，以此类推
     int nextLevelThreshold = 1 << (level + 2);
+    // 检查下一层是否也需要进行合并
     if (sstableIndex[level + 1].size() > nextLevelThreshold) {
+        // 递归调用，对下一层进行合并
+        // 这确保了LSM-Tree的层级结构始终保持平衡
         compaction(level + 1);
     }
 }
