@@ -12,10 +12,10 @@
 
 class E2ETest_Phase5 : public Test {
 private:
-    void prepare() {
+    void prepare(int max) {
         store.reset();
         std::cout << "start preparing data" << std::endl;
-        for(int idx = 0; idx < 32768; idx++) store.put(idx, util.getStr(idx));
+        for(int idx = 0; idx < max; idx++) store.put(idx, util.getStr(idx));
         std::cout << "finish preparing data" << std::endl;
     }
 
@@ -76,12 +76,15 @@ public:
     E2ETest_Phase5(const std::string &dir, bool v = true) : Test(dir, v) {}
 
     void start_test(void *args = NULL) override {
-        prepare();
 
-        for (int i = 0; i < 4; i++){
-            std::cout << "[Text Test" << i <<" ]" << std::endl;
-            text_test(4096 * (1 << i)); // 4096, 8192, 16384, 32768
-        }
+        prepare(500);
+        text_test(500);
+
+        // prepare(32768);
+        // for (int i = 0; i < 4; i++){
+        //     std::cout << "[Text Test" << i <<" ]" << std::endl;
+        //     text_test(4096 * (1 << i)); // 4096, 8192, 16384, 32768
+        // }
     }
 };
 

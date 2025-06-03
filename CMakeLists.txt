@@ -22,8 +22,7 @@ add_executable(correctness correctness.cc kvstore_api.h kvstore.h
         HNSW.cpp
         util.cpp
         util.h
-        ThreadPool.h
-        concurrentqueue.h)
+        ThreadPool.h)
 
 add_executable(persistence persistence.cc kvstore_api.h kvstore.h kvstore.cc
         skiplist.cpp skiplist.h sstable.cpp sstable.h
@@ -33,8 +32,7 @@ add_executable(persistence persistence.cc kvstore_api.h kvstore.h kvstore.cc
         HNSW.cpp
         util.cpp
         util.h
-        ThreadPool.h
-        concurrentqueue.h)
+        ThreadPool.h)
 
 
 add_subdirectory(third_party/llama.cpp)

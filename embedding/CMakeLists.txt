@@ -1,5 +1,4 @@
-add_library(embedding STATIC embedding.cc
-        ../concurrentqueue.h)
+add_library(embedding STATIC embedding.cc)
 
 target_link_libraries(embedding PUBLIC llama common)
 

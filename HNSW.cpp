@@ -431,8 +431,6 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw_parallel(const std::vector<floa
 
         // 只在邻居数量足够多时使用并行
         if (cur->neighbors[curLevel].size() > 16) {
-
-
             // 划分工作范围，每个线程处理一部分邻居
             std::vector<std::future<std::pair<float, Node*>>> futures;
             std::vector<Node*>& neighbors = cur->neighbors[curLevel];
