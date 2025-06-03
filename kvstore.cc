@@ -303,63 +303,118 @@ struct cmp {
 };
 
 
+/**
+ * @brief 范围查询函数，返回指定键值范围内的所有键值对
+ * @param key1 查询范围的起始键（包含）
+ * @param key2 查询范围的结束键（包含）
+ * @param list 输出参数，存储查询结果的键值对列表
+ * 
+ * 算法思路：使用多路归并排序，同时从内存表和各层SSTable中获取数据
+ * 并保证相同键只保留时间戳最新的版本
+ */
 void KVStore::scan(uint64_t key1, uint64_t key2, std::list<std::pair<uint64_t, std::string>> &list) {
+    // 创建向量存储从内存跳表中获取的键值对
     std::vector<std::pair<uint64_t, std::string>> mem;
-    // std::set<myPair> heap; // 维护一个指针最小堆
+    // 创建优先级队列用于多路归并，使用myPair结构体和cmp比较器
+    // 优先级队列按键值升序排列，键值相同时按时间戳降序（新的在前）
     std::priority_queue<myPair, std::vector<myPair>, cmp> heap;
-    // std::vector<sstable> ssts;
+    // 存储参与查询的SSTable头信息
     std::vector<sstablehead> sshs;
-    s->scan(key1, key2, mem);   // add in mem
-    std::vector<int> head, end; // [head, end)
-    int cnt = 0;
+    
+    // 从内存跳表中扫描指定范围的键值对
+    s->scan(key1, key2, mem);   // 将结果存入mem向量
+    
+    // 记录每个SSTable在查询范围内的起始和结束索引
+    std::vector<int> head, end; // [head, end) 左闭右开区间
+    int cnt = 0;  // SSTable计数器，用于给每个SSTable分配唯一ID
+    
+    // 如果内存中有数据，将第一个元素加入优先级队列
     if (mem.size())
+        // 内存数据的时间戳设为INF（无穷大），确保优先级最高
+        // id设为-1表示来自内存，filename设为占位符"qwq"，绷不住了qwq
         heap.push(myPair(mem[0].first, INF, 0, -1, "qwq"));
+    
+    // 遍历所有层级的SSTable，寻找与查询范围有交集的表
     for (int level = 0; level <= totalLevel; ++level) {
         for (sstablehead it : sstableIndex[level]) {
+            // 检查SSTable的键值范围是否与查询范围有交集
+            // 如果key1大于表的最大值，或key2小于表的最小值，则无交集
             if (key1 > it.getMaxV() || key2 < it.getMinV())
-                continue; // 无交集
-            int hIndex = it.lowerBound(key1);
-            int tIndex = it.lowerBound(key2);
-            if (hIndex < it.getCnt()) { // 此sstable可用
-                // sstable ss; // 读sstable
+                continue; // 跳过无交集的SSTable
+            
+            // 使用二分查找找到key1在该SSTable中的位置（大于等于key1的第一个位置）
+            int hIndex = it.lowerBound(key1); // headIndex
+            // 使用二分查找找到key2在该SSTable中的位置
+            int tIndex = it.lowerBound(key2); // tailIndex
+            
+            if (hIndex < it.getCnt()) { // 如果该SSTable中确实有可用数据
+                // 获取SSTable的文件路径
                 std::string url = it.getFilename();
-                // ss.loadFile(url.data());
-
+                // 将该SSTable的第一个有效键加入优先级队列
                 heap.push(myPair(it.getKey(hIndex), it.getTime(), hIndex, cnt++, url));
+                // 记录该SSTable的查询起始索引
                 head.push_back(hIndex);
+                
+                // 调整结束索引：如果key2确实在表中，则包含它
                 if (it.search(key2) == tIndex)
-                    tIndex++; // tIndex为第一个不可的
+                    tIndex++; // tIndex变为第一个不包含的位置
+                // 记录该SSTable的查询结束索引
                 end.push_back(tIndex);
-                // ssts.push_back(ss); // 加入ss
+                // 保存SSTable头信息用于后续数据读取
                 sshs.push_back(it);
             }
         }
     }
-    uint64_t lastKey = INF; // only choose the latest key
-    while (!heap.empty()) { // 维护堆
+    
+    // 用于去重：记录上一个处理的键值，确保相同键只选择时间戳最新的版本
+    uint64_t lastKey = INF; // 初始化为无穷大，确保第一个键肯定不等于它
+    
+    // 多路归并的主循环，直到优先级队列为空
+    while (!heap.empty()) { // 维护堆进行多路归并
+        // 取出当前最小键值的条目
         myPair cur = heap.top();
         heap.pop();
-        if (cur.id >= 0) { // from sst
-            if (cur.key != lastKey) {
-                lastKey         = cur.key;
-                uint32_t start  = sshs[cur.id].getOffset(cur.index - 1);
-                uint32_t len    = sshs[cur.id].getOffset(cur.index) - start;
-                uint32_t scnt   = sshs[cur.id].getCnt();
+        
+        if (cur.id >= 0) { // 当前条目来自SSTable（id>=0）
+            if (cur.key != lastKey) { // 如果是新的键值（避免重复处理）
+                lastKey = cur.key;   // 更新最后处理的键值
+                
+                // 计算数据在文件中的位置和长度
+                // getOffset(cur.index-1)获取前一个条目的结束位置
+                uint32_t start = sshs[cur.id].getOffset(cur.index - 1);
+                // 当前条目的结束位置减去开始位置得到数据长度
+                uint32_t len = sshs[cur.id].getOffset(cur.index) - start;
+                // 获取SSTable中的条目总数
+                uint32_t scnt = sshs[cur.id].getCnt();
+                
+                // 从文件中读取实际的值数据
+                // 文件布局：10240字节Bloom Filter + 32字节头 + scnt*12字节索引 + 数据区
                 std::string res = fetchString(cur.filename, 10240 + 32 + scnt * 12 + start, len);
+                
+                // 如果数据有效且不是删除标记，则加入结果列表
                 if (res.length() && res != DEL)
                     list.emplace_back(cur.key, res);
             }
-            if (cur.index + 1 < end[cur.id]) { // add next one to heap
+            
+            // 如果该SSTable还有下一个条目在查询范围内，则加入优先级队列
+            if (cur.index + 1 < end[cur.id]) { // 检查是否超出查询范围
+                // 创建下一个条目并加入堆
                 heap.push(myPair(sshs[cur.id].getKey(cur.index + 1), cur.time, cur.index + 1, cur.id, cur.filename));
             }
-        } else { // from mem
-            if (cur.key != lastKey) {
-                lastKey         = cur.key;
+        } else { // 当前条目来自内存（id == -1）
+            if (cur.key != lastKey) { // 如果是新的键值
+                lastKey = cur.key;   // 更新最后处理的键值
+                // 直接从内存数组中获取值
                 std::string res = mem[cur.index].second;
+                
+                // 如果数据有效且不是删除标记，则加入结果列表
                 if (res.length() && res != DEL)
                     list.emplace_back(cur.key, mem[cur.index].second);
             }
+            
+            // 如果内存中还有下一个条目，则加入优先级队列
             if (cur.index < mem.size() - 1) {
+                // 创建下一个内存条目并加入堆
                 heap.push(myPair(mem[cur.index + 1].first, cur.time, cur.index + 1, -1, cur.filename));
             }
         }
