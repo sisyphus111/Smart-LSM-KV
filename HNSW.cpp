@@ -1,4 +1,5 @@
 #pragma once
+#include "../timer.h"
 #include "HNSW.h"
 #include <random>
 #include <unordered_map>
@@ -184,16 +185,26 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
         return std::vector<uint64_t>();
     }
 
+    
+
     // 从entry向下寻找，无法靠近query则进入下一层
     int curLevel = entry->level - 1;
     Node *cur = entry;
     
+    Timer::start("hnsw_layer_descent");
+
     while (curLevel >= 0 && !cur->neighbors[curLevel].empty()) {
         // 找到邻居中最相似的节点
         float best_sim = common_embd_similarity_cos(cur->embedding.data(), query.data(), cur->embedding.size());
         Node *best_neighbor = nullptr;
         for (auto it: cur->neighbors[curLevel]) {
+
+            Timer::start("layer_descent_neighbor_similarity");
+
             float sim = common_embd_similarity_cos(it->embedding.data(), query.data(), it->embedding.size());
+
+            Timer::end("layer_descent_neighbor_similarity");
+
             if (sim > best_sim) { // 路径可以经过被删除的结点
                 best_sim = sim;
                 best_neighbor = it;
@@ -207,8 +218,13 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
         }
     }
 
+    Timer::end("hnsw_layer_descent");
+
     // 此时cur即为最接近query的节点
     // 在最底层进行knn搜索
+
+    Timer::start("hnsw_bottom_search");
+
     std::priority_queue<std::pair<float, Node*>> pq;// 大顶堆
 
     std::unordered_map<Node*, bool> visited;
@@ -224,7 +240,14 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
         pq.push(std::make_pair(sim, current));
         // 将其邻居入队
         for (auto it: current->neighbors[0]) {
-            if (!visited[it])queue.push(std::make_pair(common_embd_similarity_cos(it->embedding.data(), query.data(), query.size()),it));
+            if (!visited[it]){
+
+                Timer::start("bottom_search_neighbor_similarity");
+
+                queue.push(std::make_pair(common_embd_similarity_cos(it->embedding.data(), query.data(), query.size()),it));
+
+                Timer::end("bottom_search_neighbor_similarity");
+            }
         }
     }
 
@@ -237,6 +260,8 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw(const std::vector<float>& query
         else visited_deleted_num ++;
         pq.pop();
     }
+
+    Timer::end("hnsw_bottom_search");
 
     // std::cout << "eliminate deleted nodes: " << visited_deleted_num << std::endl;
 
