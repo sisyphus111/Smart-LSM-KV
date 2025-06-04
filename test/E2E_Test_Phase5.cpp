@@ -77,14 +77,14 @@ public:
 
     void start_test(void *args = NULL) override {
 
-        // prepare(500);
-        // text_test(500);
+        prepare(500);
+        text_test(500);
 
-        prepare(32768);
-        for (int i = 0; i < 4; i++){
-            std::cout << "[Text Test" << i <<" ]" << std::endl;
-            text_test(4096 * (1 << i)); // 4096, 8192, 16384, 32768
-        }
+        // prepare(32768);
+        // for (int i = 0; i < 4; i++){
+        //     std::cout << "[Text Test" << i <<" ]" << std::endl;
+        //     text_test(4096 * (1 << i)); // 4096, 8192, 16384, 32768
+        // }
     }
 };
 

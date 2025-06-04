@@ -1,5 +1,5 @@
 #pragma once
-#include "../timer.h"
+#include "timer.h"
 #include "HNSW.h"
 #include <random>
 #include <unordered_map>
@@ -520,7 +520,7 @@ std::vector<uint64_t> HNSWIndex::search_knn_hnsw_parallel(const std::vector<floa
         std::mutex candidates_mutex;
 
         // 先串行地收集BFS遍历候选节点
-        while (!bfs_queue.empty() && candidate_nodes.size() < efConstruction * 2) {
+        while (!bfs_queue.empty() && candidate_nodes.size() < efConstruction) {
             Node* current = bfs_queue.front();
             bfs_queue.pop();
 
